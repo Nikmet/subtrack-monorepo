@@ -1,0 +1,65 @@
+@import "tailwindcss";
+
+:root {
+    --background: #edf2f9;
+    --foreground: #122035;
+    --rail-width-desktop: 220px;
+    --page-gutter-mobile: 14px;
+    --page-gutter-desktop: 22px;
+    --content-max-soft: 1480px;
+
+    --fs-display: clamp(28px, 4.2vw, 40px);
+    --fs-h1: clamp(24px, 3.2vw, 34px);
+    --fs-h2: clamp(20px, 2.4vw, 28px);
+    --fs-title-sm: 18px;
+    --fs-body: 15px;
+    --fs-meta: 13px;
+}
+
+@theme inline {
+    --color-background: var(--background);
+    --color-foreground: var(--foreground);
+    --font-sans: var(--font-roboto);
+    --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+}
+
+body {
+    background: var(--background);
+    color: var(--foreground);
+    font-family: var(--font-roboto), sans-serif;
+    font-size: var(--fs-body);
+    line-height: 1.4;
+}
+
+*,
+*::before,
+*::after {
+    box-sizing: border-box;
+}
+
+.skeleton {
+    position: relative;
+    overflow: hidden;
+    border-radius: 12px;
+    background: #dbe5f0;
+}
+
+.skeleton::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    transform: translateX(-100%);
+    background: linear-gradient(
+        90deg,
+        rgba(219, 229, 240, 0) 0%,
+        rgba(255, 255, 255, 0.55) 50%,
+        rgba(219, 229, 240, 0) 100%
+    );
+    animation: skeleton-shimmer 1.2s infinite;
+}
+
+@keyframes skeleton-shimmer {
+    100% {
+        transform: translateX(100%);
+    }
+}

@@ -1,0 +1,19 @@
+export const apiErrorCodes = [
+  "VALIDATION_ERROR",
+  "UNAUTHORIZED",
+  "FORBIDDEN",
+  "NOT_FOUND",
+  "CONFLICT",
+  "INTERNAL_ERROR",
+  "INVALID_CREDENTIALS",
+  "BANNED",
+  "TOKEN_EXPIRED",
+  "TOKEN_INVALID",
+  "PAYMENT_METHOD_EXISTS",
+  "PAYMENT_METHOD_IN_USE",
+  "COMMON_SUBSCRIPTION_EXISTS",
+  "UPLOAD_FAILED",
+  "BAD_REQUEST",
+] as const;
+
+export type ApiErrorCode = (typeof apiErrorCodes)[number];

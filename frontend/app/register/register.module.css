@@ -1,0 +1,41 @@
+.page {
+    min-height: 100vh;
+    padding: var(--page-gutter-mobile);
+    background: radial-gradient(900px 420px at 50% -180px, #f8fbff 0%, #edf2f9 42%, #e8edf4 100%);
+}
+
+.card {
+    width: 100%;
+    max-width: 480px;
+    padding: 4px 0 0;
+}
+
+.overline {
+    margin: 0 0 6px;
+    color: #5373a0;
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+}
+
+.title {
+    margin: 0;
+    color: #122035;
+    font-size: var(--fs-h1);
+    line-height: 1.1;
+    font-weight: 800;
+}
+
+.subtitle {
+    margin: 6px 0 0;
+    color: #5a677a;
+    font-size: 14px;
+    line-height: 1.4;
+}
+
+@media (min-width: 1200px) {
+    .page {
+        padding: 20px var(--page-gutter-desktop) 28px calc(var(--rail-width-desktop) + var(--page-gutter-desktop));
+    }
+}
