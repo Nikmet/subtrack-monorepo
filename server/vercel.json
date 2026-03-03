@@ -1,18 +1,18 @@
 {
-  "version": 2,
-  "functions": {
-    "api/index.ts": {
-      "runtime": "@vercel/node"
-    }
-  },
-  "routes": [
-    {
-      "src": "^/health$",
-      "dest": "/api/index.ts"
+    "version": 2,
+    "functions": {
+        "api/index.ts": {
+            "runtime": "@vercel/node"
+        }
     },
-    {
-      "src": "^/api/(.*)$",
-      "dest": "/api/index.ts"
-    }
-  ]
+    "routes": [
+        {
+            "src": "^/health$",
+            "dest": "/api/index.ts"
+        },
+        {
+            "src": "^/api/(.*)$",
+            "dest": "/api/index.ts"
+        }
+    ]
 }
