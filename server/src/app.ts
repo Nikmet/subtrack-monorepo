@@ -19,7 +19,12 @@ const allowedCorsOrigins = env.CORS_ORIGIN.split(",")
   .filter(Boolean);
 
 app.disable("x-powered-by");
-app.use(helmet());
+
+const helmetFactory =
+  (helmet as unknown as { default?: () => express.RequestHandler }).default ??
+  (helmet as unknown as () => express.RequestHandler);
+
+app.use(helmetFactory());
 app.use(requestIdMiddleware);
 app.use(requestLoggerMiddleware);
 app.use(
@@ -62,3 +67,5 @@ app.get("/api/openapi.json", (_req, res) => {
 
 app.use(notFoundHandler);
 app.use(errorHandler);
+
+export default app;
