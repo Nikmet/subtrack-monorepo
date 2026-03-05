@@ -9,6 +9,7 @@ P:/Projects/subtrack
   frontend/             Next.js app
   server/               Express + TypeScript API
   packages/contracts/   Shared Zod contracts
+  mobile/               Flutter app
 ```
 
 ## Prerequisites
@@ -74,3 +75,19 @@ Keep deployments separated:
 - Backend project root directory: `server`
 
 Backend already contains `server/vercel.json` and `server/api/index.ts` serverless entrypoint.
+
+## Mobile (Flutter)
+
+`mobile/` contains Flutter client that consumes the deployed API.
+
+```bash
+cd mobile
+flutter pub get
+flutter run --dart-define=API_BASE_URL=https://subtrack-server.vercel.app
+```
+
+If you run API locally:
+
+```bash
+flutter run --dart-define=API_BASE_URL=http://10.0.2.2:4000
+```
