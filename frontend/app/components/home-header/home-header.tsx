@@ -1,8 +1,10 @@
+"use client";
+
 import Link from "next/link";
+import { BellIcon } from "lucide-react";
 
 import { UserAvatar } from "@/app/components/user-avatar/user-avatar";
 import styles from "./home-header.module.css";
-import { BellIcon } from "lucide-react";
 
 type HomeHeaderProps = {
     userInitials: string;

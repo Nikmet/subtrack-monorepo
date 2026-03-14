@@ -63,16 +63,18 @@ const authLogoutBodySchema = z.object({
 });
 
 const createUserSubscriptionBodySchema = z.object({
-    typeId: z.string().uuid(),
-    paymentMethodId: z.string().uuid().optional(),
-    paymentMethod: z
-        .object({
-            bankId: z.string().uuid(),
-            cardNumber: z.string().min(4),
-            makeDefault: z.boolean().optional()
-        })
-        .optional(),
-    nextPaymentAt: z.string().datetime().optional()
+    commonSubscriptionId: z.string().uuid(),
+    nextPaymentAt: z.string().min(1),
+    paymentMethodId: z.string().optional(),
+    newPaymentMethodBankId: z.string().optional(),
+    newPaymentMethodCardNumber: z.string().optional()
+});
+
+const updateUserSubscriptionBodySchema = z.object({
+    nextPaymentAt: z.string().min(1),
+    paymentMethodId: z.string().optional(),
+    newPaymentMethodBankId: z.string().optional(),
+    newPaymentMethodCardNumber: z.string().optional()
 });
 
 const createCommonSubscriptionBodySchema = z.object({
@@ -134,6 +136,10 @@ const createBankBodySchema = z.object({
 
 const updateBankBodySchema = createBankBodySchema;
 
+const homeQuerySchema = z.object({
+    currency: z.enum(["rub", "usd", "eur"]).optional()
+});
+
 const authSuccessSchema = z.object({
     data: z.object({
         user: authUserSchema.nullable(),
@@ -150,6 +156,7 @@ registry.register("AuthRegisterBody", authRegisterBodySchema);
 registry.register("AuthRefreshBody", authRefreshBodySchema);
 registry.register("AuthLogoutBody", authLogoutBodySchema);
 registry.register("CreateUserSubscriptionBody", createUserSubscriptionBodySchema);
+registry.register("UpdateUserSubscriptionBody", updateUserSubscriptionBodySchema);
 registry.register("CreateCommonSubscriptionBody", createCommonSubscriptionBodySchema);
 registry.register("PaymentMethodBody", paymentMethodBodySchema);
 registry.register("PaymentMethodRenameBody", paymentMethodRenameBodySchema);
@@ -302,7 +309,13 @@ registry.registerPath({
 registerProtectedPath({ method: "post", path: "/api/v1/uploads/avatar", summary: "Upload avatar", tags: ["uploads"] });
 registerProtectedPath({ method: "post", path: "/api/v1/uploads/icon", summary: "Upload icon", tags: ["uploads"] });
 
-registerProtectedPath({ method: "get", path: "/api/v1/home", summary: "Get home screen data", tags: ["home"] });
+registerProtectedPath({
+    method: "get",
+    path: "/api/v1/home",
+    summary: "Get home screen data",
+    tags: ["home"],
+    request: { query: homeQuerySchema }
+});
 registerProtectedPath({ method: "get", path: "/api/v1/profile", summary: "Get profile page data", tags: ["profile"] });
 registerProtectedPath({
     method: "get",
@@ -390,6 +403,25 @@ registerProtectedPath({
     summary: "Create user subscription",
     tags: ["user-subscriptions"],
     request: { body: { content: { "application/json": { schema: createUserSubscriptionBodySchema } } } }
+});
+registerProtectedPath({
+    method: "patch",
+    path: "/api/v1/user-subscriptions/{id}",
+    summary: "Update user subscription",
+    tags: ["user-subscriptions"],
+    request: {
+        params: z.object({ id: z.string().uuid() }),
+        body: { content: { "application/json": { schema: updateUserSubscriptionBodySchema } } }
+    }
+});
+registerProtectedPath({
+    method: "delete",
+    path: "/api/v1/user-subscriptions/{id}",
+    summary: "Delete user subscription",
+    tags: ["user-subscriptions"],
+    request: {
+        params: z.object({ id: z.string().uuid() })
+    }
 });
 registerProtectedPath({
     method: "get",

@@ -19,6 +19,26 @@ class SessionUser {
 
   bool get isAdmin => role.toUpperCase() == 'ADMIN';
 
+  SessionUser copyWith({
+    String? id,
+    String? email,
+    String? role,
+    bool? isBanned,
+    String? banReason,
+    String? name,
+    String? avatarLink,
+  }) {
+    return SessionUser(
+      id: id ?? this.id,
+      email: email ?? this.email,
+      role: role ?? this.role,
+      isBanned: isBanned ?? this.isBanned,
+      banReason: banReason ?? this.banReason,
+      name: name ?? this.name,
+      avatarLink: avatarLink ?? this.avatarLink,
+    );
+  }
+
   factory SessionUser.fromJson(Map<String, dynamic> json) {
     return SessionUser(
       id: (json['id'] ?? '').toString(),

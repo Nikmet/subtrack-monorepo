@@ -1,0 +1,28 @@
+﻿<svg width="1024" height="1024" viewBox="0 0 1024 1024" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="mark-grad" x1="13" y1="13" x2="3" y2="27" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#01AFBC"/>
+      <stop offset="1" stop-color="#45FFE0"/>
+    </linearGradient>
+    <filter id="card-shadow" x="100" y="100" width="824" height="824" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">
+      <feDropShadow dx="0" dy="18" stdDeviation="22" flood-color="#6B78961E"/>
+      <feDropShadow dx="0" dy="2" stdDeviation="2" flood-color="#6B789636"/>
+    </filter>
+  </defs>
+
+  <rect width="1024" height="1024" fill="#E9EEF5"/>
+  <rect x="140" y="140" width="744" height="744" rx="164" fill="#FFFFFF" filter="url(#card-shadow)"/>
+
+  <g transform="translate(314 252) scale(18)">
+    <g clip-path="url(#logo-clip)">
+      <path d="M3 19C3 19 5 23 11 23C19 23 21 15 11 15C1 15 3 7 11 7C17 7 19 11 19 11" stroke="url(#mark-grad)" stroke-width="6" stroke-linecap="round"/>
+      <path d="M4 8C6.20914 8 8 6.20914 8 4C8 1.79086 6.20914 0 4 0C1.79086 0 0 1.79086 0 4C0 6.20914 1.79086 8 4 8Z" fill="#71FF97"/>
+    </g>
+  </g>
+
+  <defs>
+    <clipPath id="logo-clip">
+      <rect width="22" height="26" fill="white"/>
+    </clipPath>
+  </defs>
+</svg>

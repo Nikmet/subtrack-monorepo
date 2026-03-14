@@ -1,9 +1,13 @@
+export type HomeCurrency = "rub" | "usd" | "eur";
+
 export type SubscriptionListItem = {
     id: string;
     price: number;
     monthlyPrice: number;
     period: number;
     nextPaymentAt: Date | string | null;
+    paymentMethodId: string | null;
+    paymentCardLabel: string;
     typeName: string;
     typeImage: string;
     categoryName: string;
@@ -23,6 +27,8 @@ export type CardStat = {
 };
 
 export type HomeScreenData = {
+    currency: HomeCurrency;
+    currencyFallback: boolean;
     userInitials: string;
     userAvatarLink: string | null;
     monthlyTotal: number;

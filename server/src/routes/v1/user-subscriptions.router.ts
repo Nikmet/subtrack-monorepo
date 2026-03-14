@@ -2,7 +2,7 @@ import { Router } from "express";
 import { z } from "zod";
 
 import { authRequired, notBanned } from "../../middlewares/auth.js";
-import { validateBody } from "../../middlewares/validate.js";
+import { validateBody, validateParams } from "../../middlewares/validate.js";
 import { AppError } from "../../lib/app-error.js";
 import { formatPaymentMethodLabel, formatRub, normalizeCardNumberInput } from "../../lib/formatters.js";
 import { sendSuccess } from "../../lib/http.js";
@@ -24,6 +24,13 @@ const createUserSubscriptionBodySchema = z.object({
   newPaymentMethodCardNumber: z.string().optional().default(""),
 });
 
+const updateUserSubscriptionBodySchema = z.object({
+  nextPaymentAt: z.string().min(1),
+  paymentMethodId: z.string().optional().default(""),
+  newPaymentMethodBankId: z.string().optional().default(""),
+  newPaymentMethodCardNumber: z.string().optional().default(""),
+});
+
 const createCommonSubscriptionBodySchema = z.object({
   name: z.string().trim().min(2),
   category: z.string().optional().default(DEFAULT_SUBSCRIPTION_CATEGORY),
@@ -33,6 +40,10 @@ const createCommonSubscriptionBodySchema = z.object({
 });
 
 const allowedPeriods = new Set([1, 3, 6, 12]);
+
+const userSubscriptionIdParamsSchema = z.object({
+  id: z.string().uuid(),
+});
 
 const parseDate = (value: string): Date | null => {
   const parsed = new Date(`${value}T00:00:00`);
@@ -303,6 +314,123 @@ userSubscriptionsRouter.get(
         price: Number(item.price.toString()),
       })),
     );
+  }),
+);
+
+userSubscriptionsRouter.patch(
+  "/:id",
+  authRequired,
+  notBanned,
+  validateParams(userSubscriptionIdParamsSchema),
+  validateBody(updateUserSubscriptionBodySchema),
+  asyncHandler(async (req, res) => {
+    const user = req.authUser!;
+    const params = req.params as z.infer<typeof userSubscriptionIdParamsSchema>;
+    const body = req.body as z.infer<typeof updateUserSubscriptionBodySchema>;
+    const nextPaymentAt = parseDate(body.nextPaymentAt);
+
+    if (!nextPaymentAt) {
+      throw new AppError({
+        status: 400,
+        code: "BAD_REQUEST",
+        message: "РќРµРєРѕСЂСЂРµРєС‚РЅР°СЏ РґР°С‚Р° СЃР»РµРґСѓСЋС‰РµРіРѕ РїР»Р°С‚РµР¶Р°.",
+      });
+    }
+
+    const existingSubscription = await prisma.userSubscription.findFirst({
+      where: {
+        id: params.id,
+        userId: user.id,
+      },
+      select: {
+        id: true,
+      },
+    });
+
+    if (!existingSubscription) {
+      throw new AppError({
+        status: 404,
+        code: "NOT_FOUND",
+        message: "РџРѕРґРїРёСЃРєР° РЅРµ РЅР°Р№РґРµРЅР°.",
+      });
+    }
+
+    const paymentMethod = await getOrCreatePaymentMethod(
+      user.id,
+      body.paymentMethodId,
+      body.newPaymentMethodBankId,
+      normalizeCardNumber(body.newPaymentMethodCardNumber),
+    );
+
+    if (!paymentMethod) {
+      throw new AppError({
+        status: 400,
+        code: "BAD_REQUEST",
+        message: "РќРµРєРѕСЂСЂРµРєС‚РЅС‹Рµ РґР°РЅРЅС‹Рµ СЃРїРѕСЃРѕР±Р° РѕРїР»Р°С‚С‹.",
+      });
+    }
+
+    const updated = await prisma.userSubscription.update({
+      where: { id: existingSubscription.id },
+      data: {
+        nextPaymentAt,
+        paymentMethodId: paymentMethod.id,
+        paymentCardLabel: paymentMethod.snapshotLabel,
+      },
+    });
+
+    sendSuccess(res, updated);
+  }),
+);
+
+userSubscriptionsRouter.delete(
+  "/:id",
+  authRequired,
+  notBanned,
+  validateParams(userSubscriptionIdParamsSchema),
+  asyncHandler(async (req, res) => {
+    const user = req.authUser!;
+    const params = req.params as z.infer<typeof userSubscriptionIdParamsSchema>;
+
+    const subscription = await prisma.userSubscription.findFirst({
+      where: {
+        id: params.id,
+        userId: user.id,
+      },
+      select: {
+        id: true,
+        commonSubscription: {
+          select: {
+            name: true,
+          },
+        },
+      },
+    });
+
+    if (!subscription) {
+      throw new AppError({
+        status: 404,
+        code: "NOT_FOUND",
+        message: "РџРѕРґРїРёСЃРєР° РЅРµ РЅР°Р№РґРµРЅР°.",
+      });
+    }
+
+    await prisma.userSubscription.delete({
+      where: {
+        id: subscription.id,
+      },
+    });
+
+    await prisma.notification.create({
+      data: {
+        userId: user.id,
+        kind: "warning",
+        title: "РџРѕРґРїРёСЃРєР° СѓРґР°Р»РµРЅР°",
+        message: `РџРѕРґРїРёСЃРєР° ${subscription.commonSubscription.name} СѓРґР°Р»РµРЅР° РёР· РІР°С€РµРіРѕ СЃРїРёСЃРєР°.`,
+      },
+    });
+
+    sendSuccess(res, { success: true, id: subscription.id });
   }),
 );
 

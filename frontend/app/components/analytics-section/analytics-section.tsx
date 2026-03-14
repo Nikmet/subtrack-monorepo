@@ -1,8 +1,10 @@
-﻿import Link from "next/link";
+"use client";
+
+import Link from "next/link";
 
 import { CategoryStatItem } from "../category-stat-item/category-stat-item";
-import { formatRub } from "@/app/utils/home-formatters";
-import type { CardStat, CategoryStat } from "@/app/types/home";
+import { formatMoney } from "@/app/utils/home-formatters";
+import type { CardStat, CategoryStat, HomeCurrency } from "@/app/types/home";
 
 import styles from "./analytics-section.module.css";
 
@@ -11,6 +13,7 @@ type AnalyticsSectionProps = {
   categoryTotal: number;
   cardStats: CardStat[];
   cardTotal: number;
+  currency: HomeCurrency;
 };
 
 export function AnalyticsSection({
@@ -18,19 +21,20 @@ export function AnalyticsSection({
   categoryTotal,
   cardStats,
   cardTotal,
+  currency,
 }: AnalyticsSectionProps) {
   return (
     <aside className={styles.rightColumn}>
       <section className={styles.categorySection}>
         <div className={styles.analyticsHeader}>
           <h2 className={styles.analyticsTitle}>Аналитика</h2>
-          <p className={styles.analyticsTotal}>{formatRub(categoryTotal)} /мес</p>
+          <p className={styles.analyticsTotal}>{formatMoney(categoryTotal, currency)} /мес</p>
         </div>
 
         {categoryStats.length > 0 ? (
           <div className={styles.categoryList}>
             {categoryStats.map((item, index) => (
-              <CategoryStatItem key={item.name} item={item} index={index} />
+              <CategoryStatItem key={item.name} item={item} index={index} currency={currency} />
             ))}
           </div>
         ) : (
@@ -48,7 +52,7 @@ export function AnalyticsSection({
       <section className={styles.cardsSection}>
         <div className={styles.cardsHeader}>
           <h3 className={styles.cardsTitle}>По карточкам</h3>
-          <p className={styles.cardsTotal}>{formatRub(cardTotal)} /мес</p>
+          <p className={styles.cardsTotal}>{formatMoney(cardTotal, currency)} /мес</p>
         </div>
 
         {cardStats.length > 0 ? (
@@ -61,7 +65,7 @@ export function AnalyticsSection({
                     {item.subscriptionsCount} подписок • {Math.round(item.share)}%
                   </p>
                 </div>
-                <p className={styles.cardAmount}>{formatRub(item.amount)}</p>
+                <p className={styles.cardAmount}>{formatMoney(item.amount, currency)}</p>
               </article>
             ))}
           </div>

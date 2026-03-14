@@ -16,6 +16,9 @@ class AppBottomMenu extends StatelessWidget {
   final double bottomInset;
 
   static int resolveIndex(String location) {
+    if (location == '/') {
+      return 0;
+    }
     if (location.startsWith('/calendar')) {
       return 1;
     }
@@ -29,7 +32,7 @@ class AppBottomMenu extends StatelessWidget {
         location.startsWith('/admin')) {
       return 3;
     }
-    return 0;
+    return -1;
   }
 
   static const List<_MenuItemData> _items = <_MenuItemData>[

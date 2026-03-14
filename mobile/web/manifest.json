@@ -1,6 +1,6 @@
 {
-    "name": "subtrack_mobile",
-    "short_name": "subtrack_mobile",
+    "name": "Subtrack",
+    "short_name": "Subtrack",
     "start_url": ".",
     "display": "standalone",
     "background_color": "#0175C2",

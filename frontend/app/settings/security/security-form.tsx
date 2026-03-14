@@ -1,7 +1,7 @@
 "use client";
 
 import { FormEvent, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter } from "@/lib/navigation/client";
 
 import { apiClientRequest } from "@/lib/api/client";
 import { ApiClientError } from "@/lib/api/types";

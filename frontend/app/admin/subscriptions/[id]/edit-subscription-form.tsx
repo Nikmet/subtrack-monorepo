@@ -1,6 +1,6 @@
 "use client";
 
-import { useRouter } from "next/navigation";
+import { useRouter } from "@/lib/navigation/client";
 import { useState, type ChangeEvent, type FormEvent } from "react";
 
 import { SUBSCRIPTION_CATEGORIES } from "@/app/constants/subscription-categories";

@@ -1,6 +1,6 @@
 "use client";
 
-import { useRouter } from "next/navigation";
+import { useRouter } from "@/lib/navigation/client";
 import { useMemo, useState, type FormEvent } from "react";
 
 import { formatPaymentMethodLabel } from "@/app/utils/payment-method-formatters";

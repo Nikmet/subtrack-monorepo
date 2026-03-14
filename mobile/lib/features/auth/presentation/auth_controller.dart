@@ -117,6 +117,10 @@ class AuthController extends StateNotifier<AuthViewState> {
     state = const AuthViewState(sessionState: AuthSessionState.unauthenticated);
   }
 
+  void replaceUser(SessionUser user) {
+    state = state.copyWith(user: user, isLoading: false, clearError: true);
+  }
+
   Future<void> markSessionExpired() async {
     await _repository.clearTokens();
     state = const AuthViewState(sessionState: AuthSessionState.unauthenticated);

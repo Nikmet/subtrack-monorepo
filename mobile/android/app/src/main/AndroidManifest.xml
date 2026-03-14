@@ -2,7 +2,7 @@
     <uses-permission android:name="android.permission.INTERNET"/>
 
     <application
-        android:label="subtrack_mobile"
+        android:label="Subtrack"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
         <activity

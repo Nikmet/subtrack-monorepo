@@ -1,6 +1,9 @@
 import { Router } from "express";
+import { z } from "zod";
 
+import { loadCbrCurrencyRates, convertRubAmount, homeCurrencyValues, type HomeCurrency } from "../../lib/currency.js";
 import { authRequired, notBanned } from "../../middlewares/auth.js";
+import { validateQuery } from "../../middlewares/validate.js";
 import { sendSuccess } from "../../lib/http.js";
 import { prisma } from "../../lib/prisma.js";
 import { getSubscriptionCategoryLabel, OTHER_CATEGORY_NAME } from "../../lib/subscription-constants.js";
@@ -18,6 +21,10 @@ const toMonthlyAmount = (price: number, period: number) => {
   const safePeriod = Math.max(period, 1);
   return price / safePeriod;
 };
+
+const homeQuerySchema = z.object({
+  currency: z.enum(homeCurrencyValues).optional().default("rub"),
+});
 
 const buildCategoryStats = (items: Array<{ categoryName: string; monthlyPrice: number }>) => {
   const grouped = new Map<string, number>();
@@ -97,8 +104,11 @@ homeRouter.get(
   "/",
   authRequired,
   notBanned,
+  validateQuery(homeQuerySchema),
   asyncHandler(async (req, res) => {
     const userId = req.authUser!.id;
+    const query = req.query as unknown as z.infer<typeof homeQuerySchema>;
+    const requestedCurrency = query.currency;
 
     const user = await prisma.user.findUnique({
       where: { id: userId },
@@ -118,16 +128,40 @@ homeRouter.get(
       },
     });
 
+    let effectiveCurrency: HomeCurrency = requestedCurrency;
+    let currencyFallback = false;
+    let rates: Awaited<ReturnType<typeof loadCbrCurrencyRates>> | null = null;
+
+    if (requestedCurrency !== "rub") {
+      try {
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 5000);
+
+        try {
+          rates = await loadCbrCurrencyRates(controller.signal);
+        } finally {
+          clearTimeout(timeout);
+        }
+      } catch {
+        effectiveCurrency = "rub";
+        currencyFallback = true;
+      }
+    }
+
     const subscriptions = userSubscriptions.map((item) => {
-      const price = Number(item.commonSubscription.price.toString());
-      const monthlyPrice = toMonthlyAmount(price, item.commonSubscription.period);
+      const priceRub = Number(item.commonSubscription.price.toString());
+      const monthlyPriceRub = toMonthlyAmount(priceRub, item.commonSubscription.period);
 
       return {
         id: item.id,
-        price,
-        monthlyPrice,
+        price: rates ? convertRubAmount(priceRub, effectiveCurrency, rates) : priceRub,
+        monthlyPrice: rates
+          ? convertRubAmount(monthlyPriceRub, effectiveCurrency, rates)
+          : monthlyPriceRub,
         period: item.commonSubscription.period,
         nextPaymentAt: item.nextPaymentAt,
+        paymentMethodId: item.paymentMethodId,
+        paymentCardLabel: item.paymentCardLabel,
         typeName: item.commonSubscription.name,
         typeImage: item.commonSubscription.imgLink ?? "",
         categoryName: getSubscriptionCategoryLabel(item.commonSubscription.category),
@@ -139,14 +173,25 @@ homeRouter.get(
     const { stats: cardStats, total: cardTotal } = buildCardStats(
       userSubscriptions.map((item) => ({
         paymentCardLabel: item.paymentCardLabel,
-        monthlyPrice: toMonthlyAmount(
-          Number(item.commonSubscription.price.toString()),
-          item.commonSubscription.period,
-        ),
+        monthlyPrice: rates
+          ? convertRubAmount(
+              toMonthlyAmount(
+                Number(item.commonSubscription.price.toString()),
+                item.commonSubscription.period,
+              ),
+              effectiveCurrency,
+              rates,
+            )
+          : toMonthlyAmount(
+              Number(item.commonSubscription.price.toString()),
+              item.commonSubscription.period,
+            ),
       })),
     );
 
     sendSuccess(res, {
+      currency: effectiveCurrency,
+      currencyFallback,
       userInitials: getInitials(user.name),
       userAvatarLink: user.avatarLink,
       monthlyTotal,

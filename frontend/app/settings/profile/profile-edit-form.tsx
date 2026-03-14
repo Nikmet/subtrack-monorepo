@@ -1,6 +1,6 @@
 "use client";
 
-import { useRouter } from "next/navigation";
+import { useRouter } from "@/lib/navigation/client";
 import { useState, type ChangeEvent, type FormEvent } from "react";
 
 import { UserAvatar } from "@/app/components/user-avatar/user-avatar";

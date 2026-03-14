@@ -1,9 +1,16 @@
-﻿import 'package:flutter/material.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'dart:io';
 
-import '../../../features/shared/parsers.dart';
-import '../../../features/shared/providers.dart';
-import '../../shared/widgets.dart';
+import 'package:dio/dio.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:image_picker/image_picker.dart';
+
+import '../../../core/models/api_failure.dart';
+import '../../shared/parsers.dart';
+import '../../shared/providers.dart';
+import '../../settings/presentation/settings_widgets.dart';
+import 'admin_models.dart';
+import 'admin_widgets.dart';
 
 class AdminBanksScreen extends ConsumerStatefulWidget {
   const AdminBanksScreen({super.key});
@@ -13,12 +20,14 @@ class AdminBanksScreen extends ConsumerStatefulWidget {
 }
 
 class _AdminBanksScreenState extends ConsumerState<AdminBanksScreen> {
+  final TextEditingController _nameController = TextEditingController();
+  final TextEditingController _iconController = TextEditingController();
+  final ImagePicker _picker = ImagePicker();
+
   bool _loading = true;
   bool _creating = false;
-
-  List<Map<String, dynamic>> _banks = const [];
-  final _name = TextEditingController();
-  final _iconLink = TextEditingController();
+  String? _error;
+  List<AdminBankItem> _banks = const <AdminBankItem>[];
 
   @override
   void initState() {
@@ -28,163 +37,404 @@ class _AdminBanksScreenState extends ConsumerState<AdminBanksScreen> {
 
   @override
   void dispose() {
-    _name.dispose();
-    _iconLink.dispose();
+    _nameController.dispose();
+    _iconController.dispose();
     super.dispose();
   }
 
   Future<void> _load() async {
-    setState(() => _loading = true);
-    final raw = await ref.read(apiClientProvider).getData('/admin/banks');
     setState(() {
-      _banks = asMapList(raw);
-      _loading = false;
+      _loading = true;
+      _error = null;
     });
+
+    try {
+      final raw = await ref.read(apiClientProvider).getData('/admin/banks');
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _banks = asMapList(raw).map(AdminBankItem.fromJson).toList();
+        _loading = false;
+      });
+    } catch (error) {
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _error = error is ApiFailure ? error.message : error.toString();
+        _loading = false;
+      });
+    }
+  }
+
+  Future<String?> _uploadIcon() async {
+    final file = await _picker.pickImage(
+      source: ImageSource.gallery,
+      imageQuality: 90,
+    );
+    if (file == null) {
+      return null;
+    }
+
+    final size = await File(file.path).length();
+    if (size > 10 * 1024 * 1024) {
+      if (mounted) {
+        showSettingsSnackBar(
+            context, 'Размер файла иконки не должен превышать 10 MB.');
+      }
+      return null;
+    }
+
+    try {
+      final form = FormData.fromMap(<String, dynamic>{
+        'file': await MultipartFile.fromFile(file.path),
+      });
+      final response =
+          await ref.read(apiClientProvider).uploadFile('/uploads/icon', form);
+      if (response is Map<String, dynamic>) {
+        final url = (response['url'] ?? '').toString().trim();
+        if (url.isNotEmpty) {
+          return url;
+        }
+      }
+      if (mounted) {
+        showSettingsSnackBar(context, 'Не удалось загрузить иконку.');
+      }
+    } on ApiFailure catch (failure) {
+      if (mounted) {
+        showSettingsSnackBar(context, failure.message);
+      }
+    } catch (_) {
+      if (mounted) {
+        showSettingsSnackBar(context, 'Не удалось загрузить иконку.');
+      }
+    }
+    return null;
+  }
+
+  Future<void> _pickCreateIcon() async {
+    final url = await _uploadIcon();
+    if (url != null && mounted) {
+      _iconController.text = url;
+      setState(() {});
+    }
   }
 
   Future<void> _create() async {
-    if (_name.text.trim().length < 2 || _iconLink.text.trim().isEmpty) {
+    final name = _nameController.text.trim();
+    final iconLink = _iconController.text.trim();
+    if (name.isEmpty || iconLink.isEmpty) {
+      showSettingsSnackBar(context, 'Заполните название банка и URL иконки.');
       return;
     }
 
-    setState(() => _creating = true);
+    setState(() {
+      _creating = true;
+    });
+
     try {
-      await ref.read(apiClientProvider).postData('/admin/banks', body: {
-        'name': _name.text.trim(),
-        'iconLink': _iconLink.text.trim(),
-      });
-      _name.clear();
-      _iconLink.clear();
+      await ref.read(apiClientProvider).postData(
+        '/admin/banks',
+        body: <String, dynamic>{
+          'name': name,
+          'iconLink': iconLink,
+        },
+      );
+      if (!mounted) {
+        return;
+      }
+      _nameController.clear();
+      _iconController.clear();
+      showSettingsSnackBar(context, 'Банк создан.');
       await _load();
+    } on ApiFailure catch (failure) {
+      if (mounted) {
+        showSettingsSnackBar(context, failure.message);
+      }
+    } catch (_) {
+      if (mounted) {
+        showSettingsSnackBar(context, 'Не удалось создать банк.');
+      }
     } finally {
       if (mounted) {
-        setState(() => _creating = false);
+        setState(() {
+          _creating = false;
+        });
       }
     }
   }
 
-  Future<void> _update(String id, String name, String iconLink) async {
-    await ref.read(apiClientProvider).patchData('/admin/banks/$id', body: {
-      'name': name,
-      'iconLink': iconLink,
-    });
-    await _load();
-  }
-
-  Future<void> _delete(String id) async {
-    await ref.read(apiClientProvider).deleteData('/admin/banks/$id');
-    await _load();
-  }
-
   @override
   Widget build(BuildContext context) {
-    if (_loading) {
-      return const Scaffold(body: Center(child: CircularProgressIndicator()));
-    }
-
-    return Scaffold(
-      appBar: AppBar(title: const Text('Банки')),
-      body: ListView(
-        padding: const EdgeInsets.only(top: 16, bottom: 24),
-        children: [
-          SectionCard(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text('Новый банк', style: Theme.of(context).textTheme.titleMedium),
-                const SizedBox(height: 8),
-                TextField(controller: _name, decoration: const InputDecoration(labelText: 'Название')),
-                const SizedBox(height: 8),
-                TextField(controller: _iconLink, decoration: const InputDecoration(labelText: 'URL иконки')),
-                const SizedBox(height: 8),
-                FilledButton(
-                  onPressed: _creating ? null : _create,
-                  child: Text(_creating ? 'Создание...' : 'Создать'),
+    return AdminPageScaffold(
+      child: _loading
+          ? const SettingsLoadingView()
+          : _error != null
+              ? SettingsErrorView(
+                  message: _error ?? 'Не удалось загрузить банки.',
+                  onRetry: _load,
+                )
+              : ListView(
+                  padding: EdgeInsets.zero,
+                  children: <Widget>[
+                    const AdminHeader(
+                      backText: '← В админ-панель',
+                      backRoute: '/admin',
+                      title: 'Банки',
+                    ),
+                    const AdminSectionTitle('Новый банк', top: 8),
+                    AdminCard(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: <Widget>[
+                          AdminIconBox(
+                            size: 52,
+                            radius: 14,
+                            imageUrl: _iconController.text,
+                            fallbackText: '?',
+                            fontSize: 24,
+                          ),
+                          const SizedBox(height: 8),
+                          AdminUploadButton(
+                            text: 'Загрузить иконку',
+                            onTap: _creating ? null : _pickCreateIcon,
+                            enabled: !_creating,
+                          ),
+                          const SizedBox(height: 10),
+                          TextField(
+                            controller: _nameController,
+                            decoration: adminInputDecoration(
+                                hintText: 'Название банка'),
+                          ),
+                          const SizedBox(height: 8),
+                          TextField(
+                            controller: _iconController,
+                            decoration:
+                                adminInputDecoration(hintText: 'URL иконки'),
+                          ),
+                          const SizedBox(height: 10),
+                          SettingsActionButton(
+                            text: _creating ? 'Создание...' : 'Создать банк',
+                            backgroundColor: const Color(0xFFDEF8E8),
+                            textColor: const Color(0xFF0F7A3F),
+                            onTap: _creating ? null : _create,
+                            height: 38,
+                          ),
+                        ],
+                      ),
+                    ),
+                    const AdminSectionTitle('Справочник', top: 10),
+                    if (_banks.isEmpty)
+                      const AdminEmptyText('Банки пока не добавлены.')
+                    else
+                      ..._banks.map(
+                        (bank) => Padding(
+                          padding: const EdgeInsets.only(bottom: 10),
+                          child: _BankCard(
+                            bank: bank,
+                            onChanged: _load,
+                            uploadIcon: _uploadIcon,
+                          ),
+                        ),
+                      ),
+                  ],
                 ),
-              ],
-            ),
-          ),
-          ..._banks.map((bank) => _BankCard(bank: bank, onSave: _update, onDelete: _delete)),
-        ],
-      ),
     );
   }
 }
 
-class _BankCard extends StatefulWidget {
-  const _BankCard({required this.bank, required this.onSave, required this.onDelete});
+class _BankCard extends ConsumerStatefulWidget {
+  const _BankCard({
+    required this.bank,
+    required this.onChanged,
+    required this.uploadIcon,
+  });
 
-  final Map<String, dynamic> bank;
-  final Future<void> Function(String id, String name, String iconLink) onSave;
-  final Future<void> Function(String id) onDelete;
+  final AdminBankItem bank;
+  final Future<void> Function() onChanged;
+  final Future<String?> Function() uploadIcon;
 
   @override
-  State<_BankCard> createState() => _BankCardState();
+  ConsumerState<_BankCard> createState() => _BankCardState();
 }
 
-class _BankCardState extends State<_BankCard> {
-  late TextEditingController _name;
-  late TextEditingController _icon;
+class _BankCardState extends ConsumerState<_BankCard> {
+  late final TextEditingController _nameController;
+  late final TextEditingController _iconController;
   bool _pending = false;
 
   @override
   void initState() {
     super.initState();
-    _name = TextEditingController(text: (widget.bank['name'] ?? '').toString());
-    _icon = TextEditingController(text: (widget.bank['iconLink'] ?? '').toString());
+    _nameController = TextEditingController(text: widget.bank.name);
+    _iconController = TextEditingController(text: widget.bank.iconLink);
   }
 
   @override
   void dispose() {
-    _name.dispose();
-    _icon.dispose();
+    _nameController.dispose();
+    _iconController.dispose();
     super.dispose();
   }
 
+  Future<void> _pickIcon() async {
+    final url = await widget.uploadIcon();
+    if (url != null && mounted) {
+      _iconController.text = url;
+      setState(() {});
+    }
+  }
+
   Future<void> _save() async {
-    final id = (widget.bank['id'] ?? '').toString();
-    if (id.isEmpty) return;
-    setState(() => _pending = true);
+    final name = _nameController.text.trim();
+    final iconLink = _iconController.text.trim();
+    if (name.isEmpty || iconLink.isEmpty) {
+      showSettingsSnackBar(context, 'Заполните название банка и URL иконки.');
+      return;
+    }
+
+    setState(() {
+      _pending = true;
+    });
     try {
-      await widget.onSave(id, _name.text.trim(), _icon.text.trim());
+      await ref.read(apiClientProvider).patchData(
+        '/admin/banks/${widget.bank.id}',
+        body: <String, dynamic>{
+          'name': name,
+          'iconLink': iconLink,
+        },
+      );
+      if (!mounted) {
+        return;
+      }
+      showSettingsSnackBar(context, 'Банк обновлен.');
+      await widget.onChanged();
+    } on ApiFailure catch (failure) {
+      if (mounted) {
+        showSettingsSnackBar(context, failure.message);
+      }
+    } catch (_) {
+      if (mounted) {
+        showSettingsSnackBar(context, 'Не удалось обновить банк.');
+      }
     } finally {
-      if (mounted) setState(() => _pending = false);
+      if (mounted) {
+        setState(() {
+          _pending = false;
+        });
+      }
     }
   }
 
   Future<void> _delete() async {
-    final id = (widget.bank['id'] ?? '').toString();
-    if (id.isEmpty) return;
-    setState(() => _pending = true);
+    setState(() {
+      _pending = true;
+    });
     try {
-      await widget.onDelete(id);
+      await ref
+          .read(apiClientProvider)
+          .deleteData('/admin/banks/${widget.bank.id}');
+      if (!mounted) {
+        return;
+      }
+      showSettingsSnackBar(context, 'Банк удален.');
+      await widget.onChanged();
+    } on ApiFailure catch (failure) {
+      if (mounted) {
+        showSettingsSnackBar(context, failure.message);
+      }
+    } catch (_) {
+      if (mounted) {
+        showSettingsSnackBar(context, 'Не удалось удалить банк.');
+      }
     } finally {
-      if (mounted) setState(() => _pending = false);
+      if (mounted) {
+        setState(() {
+          _pending = false;
+        });
+      }
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    return SectionCard(
+    return AdminCard(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          TextField(controller: _name, decoration: const InputDecoration(labelText: 'Название')),
-          const SizedBox(height: 8),
-          TextField(controller: _icon, decoration: const InputDecoration(labelText: 'URL иконки')),
-          const SizedBox(height: 8),
-          Wrap(
-            spacing: 8,
-            children: [
-              FilledButton.tonal(
-                onPressed: _pending ? null : _save,
-                child: const Text('Сохранить'),
+        children: <Widget>[
+          Row(
+            children: <Widget>[
+              AdminIconBox(
+                size: 38,
+                radius: 10,
+                imageUrl: widget.bank.iconLink,
+                fallbackText: adminInitials(widget.bank.name),
               ),
-              OutlinedButton(
-                onPressed: _pending ? null : _delete,
-                child: const Text('Удалить'),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  widget.bank.name,
+                  style: const TextStyle(
+                    color: Color(0xFF112841),
+                    fontSize: 16,
+                    fontWeight: FontWeight.w800,
+                    height: 1.2,
+                  ),
+                ),
               ),
             ],
+          ),
+          const SizedBox(height: 10),
+          Text(
+            'Используется в ${widget.bank.paymentMethodsCount} способах оплаты',
+            style: const TextStyle(
+              color: Color(0xFF6B7F99),
+              fontSize: 13,
+              height: 1.35,
+            ),
+          ),
+          const SizedBox(height: 10),
+          AdminIconBox(
+            size: 52,
+            radius: 14,
+            imageUrl: _iconController.text,
+            fallbackText: adminInitials(_nameController.text.isEmpty
+                ? widget.bank.name
+                : _nameController.text),
+            fontSize: 20,
+          ),
+          const SizedBox(height: 8),
+          AdminUploadButton(
+            text: 'Загрузить иконку',
+            onTap: _pending ? null : _pickIcon,
+            enabled: !_pending,
+          ),
+          const SizedBox(height: 10),
+          TextField(
+            controller: _nameController,
+            decoration: adminInputDecoration(),
+          ),
+          const SizedBox(height: 8),
+          TextField(
+            controller: _iconController,
+            decoration: adminInputDecoration(),
+          ),
+          const SizedBox(height: 10),
+          SizedBox(
+            width: 104,
+            child: SettingsSecondaryButton(
+              text: 'Сохранить',
+              onTap: _pending ? null : _save,
+            ),
+          ),
+          const SizedBox(height: 10),
+          SettingsActionButton(
+            text: _pending ? 'Удаление...' : 'Удалить',
+            backgroundColor: const Color(0xFFFFE6EA),
+            textColor: const Color(0xFFBD2D45),
+            onTap: _pending ? null : _delete,
+            height: 38,
           ),
         ],
       ),

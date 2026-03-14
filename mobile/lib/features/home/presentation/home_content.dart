@@ -10,6 +10,8 @@ import 'home_models.dart';
 
 enum HomeScreenStatus { loading, loaded, error }
 
+enum _SubscriptionAction { edit, delete }
+
 class HomeScreenBody extends StatelessWidget {
   const HomeScreenBody({
     super.key,
@@ -19,6 +21,9 @@ class HomeScreenBody extends StatelessWidget {
     required this.onNotificationsTap,
     required this.onProfileTap,
     required this.onSearchTap,
+    required this.onCurrencyChange,
+    required this.onSubscriptionEdit,
+    required this.onSubscriptionDelete,
     this.data,
     this.errorMessage,
   });
@@ -31,6 +36,9 @@ class HomeScreenBody extends StatelessWidget {
   final VoidCallback onNotificationsTap;
   final VoidCallback onProfileTap;
   final VoidCallback onSearchTap;
+  final ValueChanged<String> onCurrencyChange;
+  final ValueChanged<SubscriptionItemVm> onSubscriptionEdit;
+  final ValueChanged<SubscriptionItemVm> onSubscriptionDelete;
 
   @override
   Widget build(BuildContext context) {
@@ -92,12 +100,17 @@ class HomeScreenBody extends StatelessWidget {
             _SummaryCard(
               monthlyTotal: loadedData.monthlyTotal,
               subscriptionsCount: loadedData.subscriptionsCount,
+              currency: loadedData.currency,
+              onCurrencyChange: onCurrencyChange,
             ),
             const SizedBox(height: 24),
             const _SectionTitle(text: 'Мои подписки'),
             const SizedBox(height: 14),
             _SubscriptionsSection(
               subscriptions: loadedData.subscriptions,
+              currency: loadedData.currency,
+              onEdit: onSubscriptionEdit,
+              onDelete: onSubscriptionDelete,
             ),
             const SizedBox(height: 16),
             _AnalyticsSection(
@@ -105,6 +118,7 @@ class HomeScreenBody extends StatelessWidget {
               categoryTotal: loadedData.categoryTotal,
               cardStats: loadedData.cardStats,
               cardTotal: loadedData.cardTotal,
+              currency: loadedData.currency,
               onSearchTap: onSearchTap,
             ),
           ],
@@ -367,10 +381,14 @@ class _SummaryCard extends StatelessWidget {
   const _SummaryCard({
     required this.monthlyTotal,
     required this.subscriptionsCount,
+    required this.currency,
+    required this.onCurrencyChange,
   });
 
-  final int monthlyTotal;
+  final double monthlyTotal;
   final int subscriptionsCount;
+  final String currency;
+  final ValueChanged<String> onCurrencyChange;
 
   @override
   Widget build(BuildContext context) {
@@ -394,6 +412,16 @@ class _SummaryCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
+          Row(
+            mainAxisAlignment: MainAxisAlignment.end,
+            children: <Widget>[
+              _CurrencyCycleButton(
+                currency: currency,
+                onChanged: onCurrencyChange,
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
           const Text(
             'ЕЖЕМЕСЯЧНЫЕ РАСХОДЫ',
             style: TextStyle(
@@ -410,7 +438,7 @@ class _SummaryCard extends StatelessWidget {
             spacing: 8,
             children: <Widget>[
               Text(
-                formatRub(monthlyTotal),
+                formatMoney(monthlyTotal, currency),
                 style: const TextStyle(
                   color: Color(0xFFF6FBFF),
                   fontSize: 50,
@@ -477,6 +505,88 @@ class _SummaryCard extends StatelessWidget {
   }
 }
 
+class _CurrencyCycleButton extends StatelessWidget {
+  const _CurrencyCycleButton({
+    required this.currency,
+    required this.onChanged,
+  });
+
+  final String currency;
+  final ValueChanged<String> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      borderRadius: BorderRadius.circular(999),
+      onTap: () => onChanged(_nextCurrency(currency)),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+        decoration: BoxDecoration(
+          color: const Color(0x1FFFFFFF),
+          borderRadius: BorderRadius.circular(999),
+          border: Border.all(color: const Color(0x26FFFFFF)),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: <Widget>[
+            Container(
+              width: 22,
+              height: 22,
+              decoration: BoxDecoration(
+                color: const Color(0x26FFFFFF),
+                borderRadius: BorderRadius.circular(999),
+              ),
+              child: Center(
+                child: Icon(
+                  _currencyIcon(currency),
+                  size: 14,
+                  color: const Color(0xFFEAF1FC),
+                ),
+              ),
+            ),
+            const SizedBox(width: 8),
+            Text(
+              currencyLabel(currency),
+              style: const TextStyle(
+                color: Color(0xFFF0F5FC),
+                fontSize: 11,
+                fontWeight: FontWeight.w800,
+                letterSpacing: 0.6,
+              ),
+            ),
+            const SizedBox(width: 6),
+            const Icon(
+              Icons.sync_alt_rounded,
+              size: 15,
+              color: Color(0xFFEAF1FC),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  static String _nextCurrency(String current) {
+    if (current == 'rub') {
+      return 'usd';
+    }
+    if (current == 'usd') {
+      return 'eur';
+    }
+    return 'rub';
+  }
+
+  static IconData _currencyIcon(String currency) {
+    if (currency == 'usd') {
+      return Icons.attach_money_rounded;
+    }
+    if (currency == 'eur') {
+      return Icons.euro_rounded;
+    }
+    return Icons.currency_ruble_rounded;
+  }
+}
+
 class _SectionTitle extends StatelessWidget {
   const _SectionTitle({
     required this.text,
@@ -502,9 +612,15 @@ class _SectionTitle extends StatelessWidget {
 class _SubscriptionsSection extends StatelessWidget {
   const _SubscriptionsSection({
     required this.subscriptions,
+    required this.currency,
+    required this.onEdit,
+    required this.onDelete,
   });
 
   final List<SubscriptionItemVm> subscriptions;
+  final String currency;
+  final ValueChanged<SubscriptionItemVm> onEdit;
+  final ValueChanged<SubscriptionItemVm> onDelete;
 
   @override
   Widget build(BuildContext context) {
@@ -529,37 +645,37 @@ class _SubscriptionsSection extends StatelessWidget {
       );
     }
 
-    return Container(
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: UiTokens.radius14,
-        border: Border.all(color: const Color(0xFFD5E0EB)),
-        boxShadow: const <BoxShadow>[
-          BoxShadow(
-            color: Color(0x1419304D),
-            blurRadius: 24,
-            offset: Offset(0, 10),
-          ),
-        ],
-      ),
-      child: Column(
-        children: List<Widget>.generate(
-          subscriptions.length,
-          (index) {
-            final item = subscriptions[index];
-            return Column(
-              children: <Widget>[
-                _SubscriptionListItem(item: item),
-                if (index != subscriptions.length - 1)
-                  const Divider(
-                    color: Color(0xFFE3EAF2),
-                    height: 1,
-                    thickness: 1,
+    return Column(
+      children: List<Widget>.generate(
+        subscriptions.length,
+        (index) {
+          final item = subscriptions[index];
+          return Padding(
+            padding: EdgeInsets.only(
+              bottom: index == subscriptions.length - 1 ? 0 : 12,
+            ),
+            child: Container(
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: UiTokens.radius14,
+                border: Border.all(color: const Color(0xFFD5E0EB)),
+                boxShadow: const <BoxShadow>[
+                  BoxShadow(
+                    color: Color(0x1419304D),
+                    blurRadius: 24,
+                    offset: Offset(0, 10),
                   ),
-              ],
-            );
-          },
-        ),
+                ],
+              ),
+              child: _SubscriptionListItem(
+                item: item,
+                currency: currency,
+                onEdit: onEdit,
+                onDelete: onDelete,
+              ),
+            ),
+          );
+        },
       ),
     );
   }
@@ -568,78 +684,245 @@ class _SubscriptionsSection extends StatelessWidget {
 class _SubscriptionListItem extends StatelessWidget {
   const _SubscriptionListItem({
     required this.item,
+    required this.currency,
+    required this.onEdit,
+    required this.onDelete,
   });
 
   final SubscriptionItemVm item;
+  final String currency;
+  final ValueChanged<SubscriptionItemVm> onEdit;
+  final ValueChanged<SubscriptionItemVm> onDelete;
 
   @override
   Widget build(BuildContext context) {
     final title = item.typeName.trim().isEmpty ? '-' : item.typeName;
-    final meta =
-        '${item.categoryName} • ${formatNextPayment(item.nextPaymentAt)} • ${formatPeriodLabel(item.period)}';
+    final statusLabel = item.paymentCardLabel.trim().isEmpty
+        ? 'Автосписание'
+        : item.paymentCardLabel;
 
     return Padding(
       padding: const EdgeInsets.all(14),
-      child: Row(
+      child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
-          _SubscriptionIcon(
-            imageUrl: item.typeImage,
-            name: title,
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: <Widget>[
+              _SubscriptionIcon(
+                imageUrl: item.typeImage,
+                name: title,
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: <Widget>[
+                    Text(
+                      title,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        color: Color(0xFF1F3448),
+                        fontSize: 18,
+                        fontWeight: FontWeight.w700,
+                        height: 1.15,
+                      ),
+                    ),
+                    const SizedBox(height: 5),
+                    Text(
+                      item.categoryName,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        color: Color(0xFF6D8093),
+                        fontSize: 13,
+                        fontWeight: FontWeight.w500,
+                        height: 1.2,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 12),
+              PopupMenuButton<_SubscriptionAction>(
+                onSelected: (value) {
+                  if (value == _SubscriptionAction.edit) {
+                    onEdit(item);
+                  } else {
+                    onDelete(item);
+                  }
+                },
+                itemBuilder: (context) =>
+                    const <PopupMenuEntry<_SubscriptionAction>>[
+                  PopupMenuItem<_SubscriptionAction>(
+                    value: _SubscriptionAction.edit,
+                    child: Text('Редактировать'),
+                  ),
+                  PopupMenuItem<_SubscriptionAction>(
+                    value: _SubscriptionAction.delete,
+                    child: Text('Удалить'),
+                  ),
+                ],
+                child: Container(
+                  width: 32,
+                  height: 32,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFF3F7FB),
+                    borderRadius: BorderRadius.circular(999),
+                    border: Border.all(color: const Color(0xFFD9E3EE)),
+                  ),
+                  child: const Icon(
+                    Icons.more_horiz,
+                    size: 16,
+                    color: Color(0xFF36516D),
+                  ),
+                ),
+              ),
+            ],
           ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: <Widget>[
-                Text(
-                  title,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    color: Color(0xFF1F3448),
-                    fontSize: 16,
-                    fontWeight: FontWeight.w700,
-                    height: 1.25,
-                  ),
+          const SizedBox(height: 14),
+          const Divider(
+            color: Color(0xFFE7EDF4),
+            height: 1,
+            thickness: 1,
+          ),
+          const SizedBox(height: 14),
+          _SubscriptionMetricRow(
+            label: 'Следующий платёж',
+            value: formatNextPaymentShort(item.nextPaymentAt),
+          ),
+          const SizedBox(height: 12),
+          _SubscriptionMetricRow(
+            label: 'Частота',
+            value: formatPeriodLabel(item.period),
+          ),
+          const SizedBox(height: 14),
+          const Divider(
+            color: Color(0xFFE7EDF4),
+            height: 1,
+            thickness: 1,
+          ),
+          const SizedBox(height: 14),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: <Widget>[
+              Expanded(
+                child: Wrap(
+                  crossAxisAlignment: WrapCrossAlignment.end,
+                  spacing: 4,
+                  children: <Widget>[
+                    Text(
+                      formatMoney(item.monthlyPrice, currency),
+                      style: const TextStyle(
+                        color: Color(0xFF133049),
+                        fontSize: 34,
+                        fontWeight: FontWeight.w800,
+                        height: 0.95,
+                        letterSpacing: -0.72,
+                      ),
+                    ),
+                    const Padding(
+                      padding: EdgeInsets.only(bottom: 4),
+                      child: Text(
+                        '/мес',
+                        style: TextStyle(
+                          color: Color(0xFF5F7387),
+                          fontSize: 18,
+                          fontWeight: FontWeight.w700,
+                          height: 1,
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
-                const SizedBox(height: 4),
-                Text(
-                  meta,
-                  style: const TextStyle(
-                    color: Color(0xFF76899D),
-                    fontSize: 12,
-                    fontWeight: FontWeight.w400,
-                    height: 1.35,
-                  ),
+              ),
+              const SizedBox(width: 12),
+              Flexible(
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.end,
+                  mainAxisSize: MainAxisSize.min,
+                  children: <Widget>[
+                    Container(
+                      width: 7,
+                      height: 7,
+                      decoration: const BoxDecoration(
+                        color: Color(0xFF2DB86F),
+                        shape: BoxShape.circle,
+                        boxShadow: <BoxShadow>[
+                          BoxShadow(
+                            color: Color(0x1F2DB86F),
+                            spreadRadius: 4,
+                            blurRadius: 0,
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Flexible(
+                      child: Text(
+                        statusLabel,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        textAlign: TextAlign.right,
+                        style: const TextStyle(
+                          color: Color(0xFF2B9A60),
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                          height: 1.2,
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
-                const SizedBox(height: 8),
-                Text(
-                  formatRub(item.monthlyPrice),
-                  style: const TextStyle(
-                    color: Color(0xFF1C374F),
-                    fontSize: 42,
-                    fontWeight: FontWeight.w800,
-                    height: 0.95,
-                    letterSpacing: -0.84,
-                  ),
-                ),
-                const SizedBox(height: 4),
-                const Text(
-                  'В МЕСЯЦ',
-                  style: TextStyle(
-                    color: Color(0xFF6F8399),
-                    fontSize: 10,
-                    fontWeight: FontWeight.w700,
-                    letterSpacing: 0.4,
-                    height: 1.2,
-                  ),
-                ),
-              ],
-            ),
+              ),
+            ],
           ),
         ],
       ),
+    );
+  }
+}
+
+class _SubscriptionMetricRow extends StatelessWidget {
+  const _SubscriptionMetricRow({
+    required this.label,
+    required this.value,
+  });
+
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: <Widget>[
+        Expanded(
+          child: Text(
+            label,
+            style: const TextStyle(
+              color: Color(0xFF75879A),
+              fontSize: 13,
+              fontWeight: FontWeight.w400,
+              height: 1.25,
+            ),
+          ),
+        ),
+        const SizedBox(width: 16),
+        Flexible(
+          child: Text(
+            value,
+            textAlign: TextAlign.right,
+            style: const TextStyle(
+              color: Color(0xFF173049),
+              fontSize: 14,
+              fontWeight: FontWeight.w600,
+              height: 1.25,
+            ),
+          ),
+        ),
+      ],
     );
   }
 }
@@ -704,13 +987,15 @@ class _AnalyticsSection extends StatelessWidget {
     required this.categoryTotal,
     required this.cardStats,
     required this.cardTotal,
+    required this.currency,
     required this.onSearchTap,
   });
 
   final List<CategoryStatVm> categoryStats;
-  final int categoryTotal;
+  final double categoryTotal;
   final List<CardStatVm> cardStats;
-  final int cardTotal;
+  final double cardTotal;
+  final String currency;
   final VoidCallback onSearchTap;
 
   @override
@@ -722,7 +1007,7 @@ class _AnalyticsSection extends StatelessWidget {
             children: <Widget>[
               _SectionHeader(
                 title: 'Аналитика',
-                total: '${formatRub(categoryTotal)} /мес',
+                total: '${formatMoney(categoryTotal, currency)} /мес',
                 titleSize: 32,
               ),
               const SizedBox(height: 14),
@@ -785,6 +1070,7 @@ class _AnalyticsSection extends StatelessWidget {
                           bottom: index == categoryStats.length - 1 ? 0 : 14),
                       child: _CategoryStatItem(
                         item: item,
+                        currency: currency,
                         color: UiTokens.categoryBarColors[
                             index % UiTokens.categoryBarColors.length],
                       ),
@@ -800,7 +1086,7 @@ class _AnalyticsSection extends StatelessWidget {
             children: <Widget>[
               _SectionHeader(
                 title: 'По карточкам',
-                total: '${formatRub(cardTotal)} /мес',
+                total: '${formatMoney(cardTotal, currency)} /мес',
                 titleSize: 20,
               ),
               const SizedBox(height: 14),
@@ -823,7 +1109,7 @@ class _AnalyticsSection extends StatelessWidget {
                     return Padding(
                       padding: EdgeInsets.only(
                           bottom: index == cardStats.length - 1 ? 0 : 10),
-                      child: _CardStatItem(item: item),
+                      child: _CardStatItem(item: item, currency: currency),
                     );
                   }),
                 ),
@@ -915,10 +1201,12 @@ class _SectionHeader extends StatelessWidget {
 class _CategoryStatItem extends StatelessWidget {
   const _CategoryStatItem({
     required this.item,
+    required this.currency,
     required this.color,
   });
 
   final CategoryStatVm item;
+  final String currency;
   final Color color;
 
   @override
@@ -944,7 +1232,7 @@ class _CategoryStatItem extends StatelessWidget {
             ),
             const SizedBox(width: 10),
             Text(
-              formatRub(item.amount),
+              formatMoney(item.amount, currency),
               style: const TextStyle(
                 color: Color(0xFF1F364C),
                 fontSize: 14,
@@ -982,9 +1270,11 @@ class _CategoryStatItem extends StatelessWidget {
 class _CardStatItem extends StatelessWidget {
   const _CardStatItem({
     required this.item,
+    required this.currency,
   });
 
   final CardStatVm item;
+  final String currency;
 
   @override
   Widget build(BuildContext context) {
@@ -1027,7 +1317,7 @@ class _CardStatItem extends StatelessWidget {
           ),
           const SizedBox(width: 8),
           Text(
-            formatRub(item.amount),
+            formatMoney(item.amount, currency),
             style: const TextStyle(
               color: Color(0xFF132A43),
               fontSize: 16,

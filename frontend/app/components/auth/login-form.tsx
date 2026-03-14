@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter } from "@/lib/navigation/client";
 import { FormEvent, useState } from "react";
 
 import { apiClientRequest } from "@/lib/api/client";

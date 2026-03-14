@@ -1,10 +1,15 @@
-﻿import 'package:dio/dio.dart';
+import 'dart:io';
+
+import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_picker/image_picker.dart';
 
+import '../../../core/models/api_failure.dart';
 import '../../../features/shared/parsers.dart';
 import '../../../features/shared/providers.dart';
+import 'settings_models.dart';
+import 'settings_widgets.dart';
 
 class SettingsProfileScreen extends ConsumerStatefulWidget {
   const SettingsProfileScreen({super.key});
@@ -14,12 +19,16 @@ class SettingsProfileScreen extends ConsumerStatefulWidget {
 }
 
 class _SettingsProfileScreenState extends ConsumerState<SettingsProfileScreen> {
-  final _formKey = GlobalKey<FormState>();
-  final _name = TextEditingController();
-  final _email = TextEditingController();
-  final _avatarUrl = TextEditingController();
+  final _nameController = TextEditingController();
+  final _emailController = TextEditingController();
+  final _avatarController = TextEditingController();
+  final _picker = ImagePicker();
+
   bool _loading = true;
   bool _saving = false;
+  bool _uploading = false;
+  String? _error;
+  String? _uploadErrorText;
 
   @override
   void initState() {
@@ -29,136 +38,245 @@ class _SettingsProfileScreenState extends ConsumerState<SettingsProfileScreen> {
 
   @override
   void dispose() {
-    _name.dispose();
-    _email.dispose();
-    _avatarUrl.dispose();
+    _nameController.dispose();
+    _emailController.dispose();
+    _avatarController.dispose();
     super.dispose();
   }
 
   Future<void> _load() async {
-    setState(() => _loading = true);
-    final raw = await ref.read(apiClientProvider).getData('/settings/profile');
-    final data = asMap(raw);
-
-    _name.text = (data['name'] ?? '').toString();
-    _email.text = (data['email'] ?? '').toString();
-    _avatarUrl.text = (data['avatarLink'] ?? '').toString();
-
-    if (mounted) {
-      setState(() => _loading = false);
-    }
-  }
-
-  Future<void> _uploadAvatar(ImageSource source) async {
-    final picker = ImagePicker();
-    final file = await picker.pickImage(source: source, imageQuality: 85);
-    if (file == null) {
-      return;
-    }
-
-    final form = FormData.fromMap({
-      'file': await MultipartFile.fromFile(file.path),
+    setState(() {
+      _loading = true;
+      _error = null;
     });
 
-    final response = await ref.read(apiClientProvider).uploadFile('/uploads/avatar', form);
-    final map = response is Map<String, dynamic> ? response : <String, dynamic>{};
-    final url = (map['url'] ?? '').toString();
+    try {
+      final raw = await ref.read(apiClientProvider).getData('/settings/profile');
+      final data = SettingsProfileData.fromJson(asMap(raw));
+      _nameController.text = data.name;
+      _emailController.text = data.email;
+      _avatarController.text = data.avatarLink ?? '';
 
-    if (url.isNotEmpty) {
+      if (!mounted) {
+        return;
+      }
       setState(() {
-        _avatarUrl.text = url;
+        _loading = false;
+      });
+    } catch (error) {
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _error = error.toString();
+        _loading = false;
       });
     }
   }
 
-  Future<void> _save() async {
-    if (!_formKey.currentState!.validate()) {
+  Future<void> _pickAvatar() async {
+    final file = await _picker.pickImage(
+      source: ImageSource.gallery,
+      imageQuality: 85,
+    );
+    if (file == null) {
       return;
     }
 
-    setState(() => _saving = true);
-    await ref.read(apiClientProvider).patchData('/settings/profile', body: {
-      'name': _name.text.trim(),
-      'email': _email.text.trim().toLowerCase(),
-      'avatarLink': _avatarUrl.text.trim().isEmpty ? null : _avatarUrl.text.trim(),
+    final size = await File(file.path).length();
+    if (size > 10 * 1024 * 1024) {
+      setState(() {
+        _uploadErrorText = 'Размер файла аватара не должен превышать 10MB.';
+      });
+      return;
+    }
+
+    setState(() {
+      _uploading = true;
+      _uploadErrorText = null;
     });
 
-    if (!mounted) return;
-    setState(() => _saving = false);
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Профиль обновлен')),
+    try {
+      final form = FormData.fromMap(<String, dynamic>{
+        'file': await MultipartFile.fromFile(file.path),
+      });
+      final response = await ref.read(apiClientProvider).uploadFile('/uploads/avatar', form);
+      final url = response is Map<String, dynamic> ? (response['url'] ?? '').toString() : '';
+
+      if (url.isEmpty) {
+        setState(() {
+          _uploadErrorText = 'Не удалось загрузить аватар.';
+        });
+      } else {
+        _avatarController.text = url;
+      }
+    } on ApiFailure catch (failure) {
+      setState(() {
+        _uploadErrorText = failure.message.isEmpty ? 'Не удалось загрузить аватар.' : failure.message;
+      });
+    } catch (_) {
+      setState(() {
+        _uploadErrorText = 'Ошибка загрузки. Попробуйте снова.';
+      });
+    } finally {
+      if (mounted) {
+        setState(() {
+          _uploading = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _save() async {
+    final validationMessage = validateProfileForm(
+      name: _nameController.text,
+      email: _emailController.text,
+      avatarLink: _avatarController.text,
     );
+
+    if (validationMessage != null) {
+      showSettingsSnackBar(context, validationMessage);
+      return;
+    }
+
+    setState(() {
+      _saving = true;
+      _uploadErrorText = null;
+    });
+
+    final normalizedName = _nameController.text.trim();
+    final normalizedEmail = _emailController.text.trim().toLowerCase();
+    final normalizedAvatar = _avatarController.text.trim();
+
+    try {
+      await ref.read(apiClientProvider).patchData(
+        '/settings/profile',
+        body: <String, dynamic>{
+          'name': normalizedName,
+          'email': normalizedEmail,
+          'avatarLink': normalizedAvatar.isEmpty ? null : normalizedAvatar,
+        },
+      );
+
+      final auth = ref.read(authControllerProvider);
+      final currentUser = auth.user;
+      if (currentUser != null) {
+        ref.read(authControllerProvider.notifier).replaceUser(
+              currentUser.copyWith(
+                name: normalizedName,
+                email: normalizedEmail,
+                avatarLink: normalizedAvatar.isEmpty ? null : normalizedAvatar,
+              ),
+            );
+      }
+
+      if (!mounted) {
+        return;
+      }
+      showSettingsSnackBar(context, 'Профиль обновлен.');
+    } on ApiFailure catch (failure) {
+      if (!mounted) {
+        return;
+      }
+      showSettingsSnackBar(context, mapProfileFailureToMessage(failure));
+    } catch (_) {
+      if (!mounted) {
+        return;
+      }
+      showSettingsSnackBar(context, 'Проверьте корректность имени, email и ссылки на аватар.');
+    } finally {
+      if (mounted) {
+        setState(() {
+          _saving = false;
+        });
+      }
+    }
   }
 
   @override
   Widget build(BuildContext context) {
-    if (_loading) {
-      return const Scaffold(body: Center(child: CircularProgressIndicator()));
-    }
+    return SettingsScaffold(
+      title: 'Профиль',
+      location: '/settings/profile',
+      backRoute: '/settings',
+      child: Builder(
+        builder: (context) {
+          if (_loading) {
+            return const SettingsLoadingView();
+          }
+          if (_error != null) {
+            return SettingsErrorView(
+              message: _error ?? 'Не удалось загрузить профиль.',
+              onRetry: _load,
+            );
+          }
 
-    return Scaffold(
-      appBar: AppBar(title: const Text('Профиль')),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16),
-        child: Form(
-          key: _formKey,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              if (_avatarUrl.text.trim().isNotEmpty)
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(16),
-                  child: Image.network(
-                    _avatarUrl.text.trim(),
-                    height: 140,
-                    fit: BoxFit.cover,
-                  ),
+          return ListView(
+            padding: const EdgeInsets.only(top: 14, bottom: 112),
+            children: <Widget>[
+              SettingsCardBox(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: <Widget>[
+                    SettingsAvatar(
+                      name: _nameController.text,
+                      imageUrl: _avatarController.text,
+                      size: 90,
+                    ),
+                    const SizedBox(height: 8),
+                    SettingsActionButton(
+                      text: _uploading ? 'Загрузка...' : 'Загрузить аватар',
+                      backgroundColor: const Color(0xFFE2F1FF),
+                      textColor: const Color(0xFF1F5D95),
+                      onTap: _uploading ? null : _pickAvatar,
+                      height: 34,
+                      enabled: !_uploading,
+                    ),
+                    if (_uploadErrorText != null) ...<Widget>[
+                      const SizedBox(height: 8),
+                      Text(
+                        _uploadErrorText!,
+                        style: const TextStyle(
+                          color: Color(0xFFBD2D45),
+                          fontSize: 12,
+                        ),
+                      ),
+                    ],
+                    const SizedBox(height: 12),
+                    const SettingsFormLabel('Имя'),
+                    const SizedBox(height: 8),
+                    TextField(
+                      controller: _nameController,
+                      decoration: settingsInputDecoration(),
+                    ),
+                    const SizedBox(height: 10),
+                    const SettingsFormLabel('Email'),
+                    const SizedBox(height: 8),
+                    TextField(
+                      controller: _emailController,
+                      keyboardType: TextInputType.emailAddress,
+                      decoration: settingsInputDecoration(),
+                    ),
+                    const SizedBox(height: 10),
+                    const SettingsFormLabel('URL аватара'),
+                    const SizedBox(height: 8),
+                    TextField(
+                      controller: _avatarController,
+                      keyboardType: TextInputType.url,
+                      decoration: settingsInputDecoration(),
+                    ),
+                    const SizedBox(height: 14),
+                    SettingsPrimaryButton(
+                      text: _saving ? 'Сохранение...' : 'Сохранить',
+                      onTap: (_saving || _uploading) ? null : _save,
+                      enabled: !_saving && !_uploading,
+                    ),
+                  ],
                 ),
-              const SizedBox(height: 8),
-              Wrap(
-                spacing: 8,
-                children: [
-                  OutlinedButton.icon(
-                    onPressed: () => _uploadAvatar(ImageSource.gallery),
-                    icon: const Icon(Icons.photo_library_outlined),
-                    label: const Text('Галерея'),
-                  ),
-                  OutlinedButton.icon(
-                    onPressed: () => _uploadAvatar(ImageSource.camera),
-                    icon: const Icon(Icons.photo_camera_outlined),
-                    label: const Text('Камера'),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 12),
-              TextFormField(
-                controller: _name,
-                decoration: const InputDecoration(labelText: 'Имя'),
-                validator: (value) => (value ?? '').trim().length < 2 ? 'Введите минимум 2 символа' : null,
-              ),
-              const SizedBox(height: 12),
-              TextFormField(
-                controller: _email,
-                decoration: const InputDecoration(labelText: 'Email'),
-                validator: (value) {
-                  final v = (value ?? '').trim();
-                  if (v.isEmpty || !v.contains('@')) return 'Введите корректный email';
-                  return null;
-                },
-              ),
-              const SizedBox(height: 12),
-              TextFormField(
-                controller: _avatarUrl,
-                decoration: const InputDecoration(labelText: 'URL аватара'),
-              ),
-              const SizedBox(height: 16),
-              FilledButton(
-                onPressed: _saving ? null : _save,
-                child: Text(_saving ? 'Сохранение...' : 'Сохранить'),
               ),
             ],
-          ),
-        ),
+          );
+        },
       ),
     );
   }

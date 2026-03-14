@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/models/api_failure.dart';
 import '../../../features/shared/parsers.dart';
 import '../../../features/shared/providers.dart';
-import '../../shared/widgets.dart';
+import 'settings_models.dart';
+import 'settings_widgets.dart';
 
 class SettingsPaymentMethodsScreen extends ConsumerStatefulWidget {
   const SettingsPaymentMethodsScreen({super.key});
@@ -13,14 +15,14 @@ class SettingsPaymentMethodsScreen extends ConsumerStatefulWidget {
 }
 
 class _SettingsPaymentMethodsScreenState extends ConsumerState<SettingsPaymentMethodsScreen> {
+  final _createCardController = TextEditingController();
+
   bool _loading = true;
-  bool _creating = false;
-
-  List<Map<String, dynamic>> _banks = const [];
-  List<Map<String, dynamic>> _methods = const [];
-
-  final _cardNumber = TextEditingController();
+  bool _isCreating = false;
+  String? _error;
   String? _selectedBankId;
+  List<SettingsBank> _banks = const <SettingsBank>[];
+  List<SettingsPaymentMethod> _methods = const <SettingsPaymentMethod>[];
 
   @override
   void initState() {
@@ -30,133 +32,281 @@ class _SettingsPaymentMethodsScreenState extends ConsumerState<SettingsPaymentMe
 
   @override
   void dispose() {
-    _cardNumber.dispose();
+    _createCardController.dispose();
     super.dispose();
   }
 
   Future<void> _load() async {
-    setState(() => _loading = true);
-
-    final api = ref.read(apiClientProvider);
-    final banks = asMapList(await api.getData('/banks'));
-    final methods = asMapList(await api.getData('/payment-methods'));
-
     setState(() {
-      _banks = banks;
-      _methods = methods;
-      _selectedBankId = banks.isNotEmpty ? (banks.first['id'] ?? '').toString() : null;
-      _loading = false;
+      _loading = true;
+      _error = null;
     });
+
+    try {
+      final api = ref.read(apiClientProvider);
+      final responses = await Future.wait<dynamic>(<Future<dynamic>>[
+        api.getData('/banks'),
+        api.getData('/payment-methods'),
+      ]);
+
+      final banks = asMapList(responses[0]).map(SettingsBank.fromJson).toList();
+      final methods = asMapList(responses[1]).map(SettingsPaymentMethod.fromJson).toList();
+      final selectedBank = banks.any((bank) => bank.id == _selectedBankId)
+          ? _selectedBankId
+          : (banks.isEmpty ? null : banks.first.id);
+
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _banks = banks;
+        _methods = methods;
+        _selectedBankId = selectedBank;
+        _loading = false;
+      });
+    } catch (error) {
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _error = error.toString();
+        _loading = false;
+      });
+    }
   }
 
   Future<void> _create() async {
-    if (_selectedBankId == null || _selectedBankId!.isEmpty) {
+    final bankId = _selectedBankId;
+    final cardNumber = _createCardController.text.trim();
+
+    if (bankId == null || bankId.isEmpty || cardNumber.length < 4) {
+      showSettingsSnackBar(context, 'Введите корректное название способа оплаты.');
       return;
     }
 
-    final cardNumber = _cardNumber.text.trim();
-    if (cardNumber.length < 4) {
-      return;
-    }
+    setState(() {
+      _isCreating = true;
+    });
 
-    setState(() => _creating = true);
     try {
-      await ref.read(apiClientProvider).postData('/payment-methods', body: {
-        'bankId': _selectedBankId,
-        'cardNumber': cardNumber,
-      });
-      _cardNumber.clear();
+      await ref.read(apiClientProvider).postData(
+        '/payment-methods',
+        body: <String, dynamic>{
+          'bankId': bankId,
+          'cardNumber': cardNumber,
+        },
+      );
+
+      final bankName = _banks.firstWhere((bank) => bank.id == bankId).name;
       await _load();
+      _createCardController.clear();
+
+      if (!mounted) {
+        return;
+      }
+      showSettingsSnackBar(context, '${formatPaymentMethodLabel(bankName, cardNumber)} добавлен.');
+    } on ApiFailure catch (failure) {
+      if (!mounted) {
+        return;
+      }
+      showSettingsSnackBar(context, mapPaymentMethodFailureToMessage(failure));
+    } catch (_) {
+      if (!mounted) {
+        return;
+      }
+      showSettingsSnackBar(context, 'Введите корректное название способа оплаты.');
     } finally {
       if (mounted) {
-        setState(() => _creating = false);
+        setState(() {
+          _isCreating = false;
+        });
       }
     }
   }
 
-  Future<void> _setDefault(String id) async {
-    await ref.read(apiClientProvider).patchData('/payment-methods/$id/default', body: {});
-    await _load();
+  Future<void> _updateMethod(SettingsPaymentMethod method, String bankId, String cardNumber) async {
+    try {
+      await ref.read(apiClientProvider).patchData(
+        '/payment-methods/${method.id}',
+        body: <String, dynamic>{
+          'bankId': bankId,
+          'cardNumber': cardNumber,
+        },
+      );
+
+      final bankName = _banks.firstWhere((bank) => bank.id == bankId).name;
+      await _load();
+      if (!mounted) {
+        return;
+      }
+      showSettingsSnackBar(context, '${formatPaymentMethodLabel(bankName, cardNumber)} обновлен.');
+    } on ApiFailure catch (failure) {
+      if (!mounted) {
+        return;
+      }
+      showSettingsSnackBar(context, mapPaymentMethodFailureToMessage(failure));
+    } catch (_) {
+      if (!mounted) {
+        return;
+      }
+      showSettingsSnackBar(context, 'Введите корректное название способа оплаты.');
+    }
   }
 
-  Future<void> _delete(String id) async {
-    await ref.read(apiClientProvider).deleteData('/payment-methods/$id', body: {});
-    await _load();
+  Future<void> _setDefault(SettingsPaymentMethod method) async {
+    try {
+      await ref.read(apiClientProvider).patchData(
+        '/payment-methods/${method.id}/default',
+        body: <String, dynamic>{},
+      );
+      await _load();
+      if (!mounted) {
+        return;
+      }
+      showSettingsSnackBar(context, '${formatPaymentMethodLabel(method.bankName, method.cardNumber)} выбран по умолчанию.');
+    } on ApiFailure catch (failure) {
+      if (!mounted) {
+        return;
+      }
+      showSettingsSnackBar(context, mapPaymentMethodFailureToMessage(failure));
+    } catch (_) {
+      if (!mounted) {
+        return;
+      }
+      showSettingsSnackBar(context, 'Введите корректное название способа оплаты.');
+    }
   }
 
-  Future<void> _update(String id, String bankId, String cardNumber) async {
-    await ref.read(apiClientProvider).patchData('/payment-methods/$id', body: {
-      'bankId': bankId,
-      'cardNumber': cardNumber,
-    });
-    await _load();
+  Future<void> _deleteMethod(SettingsPaymentMethod method) async {
+    try {
+      await ref.read(apiClientProvider).deleteData(
+        '/payment-methods/${method.id}',
+        body: <String, dynamic>{},
+      );
+      await _load();
+      if (!mounted) {
+        return;
+      }
+      showSettingsSnackBar(context, '${formatPaymentMethodLabel(method.bankName, method.cardNumber)} удален.');
+    } on ApiFailure catch (failure) {
+      if (!mounted) {
+        return;
+      }
+      showSettingsSnackBar(context, mapPaymentMethodFailureToMessage(failure));
+    } catch (_) {
+      if (!mounted) {
+        return;
+      }
+      showSettingsSnackBar(context, 'Введите корректное название способа оплаты.');
+    }
   }
 
   @override
   Widget build(BuildContext context) {
-    if (_loading) {
-      return const Scaffold(body: Center(child: CircularProgressIndicator()));
-    }
+    return SettingsScaffold(
+      title: 'Способы оплаты',
+      location: '/settings/payment-methods',
+      backRoute: '/settings',
+      child: Builder(
+        builder: (context) {
+          if (_loading) {
+            return const SettingsLoadingView();
+          }
+          if (_error != null) {
+            return SettingsErrorView(
+              message: _error ?? 'Не удалось загрузить способы оплаты.',
+              onRetry: _load,
+            );
+          }
 
-    return Scaffold(
-      appBar: AppBar(title: const Text('пїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅ')),
-      body: ListView(
-        padding: const EdgeInsets.only(top: 16, bottom: 24),
-        children: [
-          SectionCard(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text('пїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅ', style: Theme.of(context).textTheme.titleMedium),
-                const SizedBox(height: 8),
-                DropdownButtonFormField<String>(
-                  initialValue: _selectedBankId,
-                  items: _banks
-                      .map(
-                        (bank) => DropdownMenuItem(
-                          value: (bank['id'] ?? '').toString(),
-                          child: Text((bank['name'] ?? '').toString()),
+          return RefreshIndicator(
+            onRefresh: _load,
+            child: ListView(
+              physics: const AlwaysScrollableScrollPhysics(),
+              padding: const EdgeInsets.only(top: 14, bottom: 112),
+              children: <Widget>[
+                const SettingsSectionTitle(text: 'Новый способ оплаты'),
+                if (_banks.isNotEmpty)
+                  SettingsCardBox(
+                    margin: const EdgeInsets.symmetric(horizontal: 12),
+                    padding: const EdgeInsets.all(10),
+                    child: Column(
+                      children: <Widget>[
+                        DropdownButtonFormField<String>(
+                          key: ValueKey<String?>(_selectedBankId),
+                          initialValue: _selectedBankId,
+                          items: _banks
+                              .map(
+                                (bank) => DropdownMenuItem<String>(
+                                  value: bank.id,
+                                  child: Text(bank.name),
+                                ),
+                              )
+                              .toList(),
+                          decoration: settingsInputDecoration(),
+                          onChanged: (value) {
+                            setState(() {
+                              _selectedBankId = value;
+                            });
+                          },
                         ),
-                      )
-                      .toList(),
-                  onChanged: (value) => setState(() => _selectedBankId = value),
-                  decoration: const InputDecoration(labelText: 'пїЅпїЅпїЅпїЅ'),
-                ),
-                const SizedBox(height: 8),
-                TextField(
-                  controller: _cardNumber,
-                  decoration: const InputDecoration(labelText: 'пїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅ'),
-                ),
-                const SizedBox(height: 8),
-                FilledButton(
-                  onPressed: _creating ? null : _create,
-                  child: Text(_creating ? 'пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ...' : 'пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅ'),
-                ),
+                        const SizedBox(height: 8),
+                        TextField(
+                          controller: _createCardController,
+                          decoration: settingsInputDecoration(
+                            hintText: 'Номер карты, например **** 4242',
+                          ),
+                        ),
+                        const SizedBox(height: 10),
+                        SettingsPrimaryButton(
+                          text: _isCreating ? 'Создание...' : 'Создать',
+                          onTap: _isCreating ? null : _create,
+                          enabled: !_isCreating,
+                        ),
+                      ],
+                    ),
+                  )
+                else
+                  const Padding(
+                    padding: EdgeInsets.symmetric(horizontal: 12),
+                    child: Text(
+                      'Банки не настроены. Добавьте их в админ-панели.',
+                      style: TextStyle(
+                        color: Color(0xFF6B7F99),
+                        fontSize: 14,
+                      ),
+                    ),
+                  ),
+                const SizedBox(height: 14),
+                const SettingsSectionTitle(text: 'Мои карты'),
+                if (_methods.isEmpty)
+                  const Padding(
+                    padding: EdgeInsets.symmetric(horizontal: 12),
+                    child: Text(
+                      'Сохраненных способов оплаты пока нет.',
+                      style: TextStyle(
+                        color: Color(0xFF6B7F99),
+                        fontSize: 14,
+                      ),
+                    ),
+                  )
+                else
+                  ..._methods.map(
+                    (method) => Padding(
+                      padding: const EdgeInsets.only(bottom: 10),
+                      child: _PaymentMethodCard(
+                        method: method,
+                        banks: _banks,
+                        onSave: (bankId, cardNumber) => _updateMethod(method, bankId, cardNumber),
+                        onSetDefault: method.isDefault ? null : () => _setDefault(method),
+                        onDelete: () => _deleteMethod(method),
+                      ),
+                    ),
+                  ),
               ],
             ),
-          ),
-          ..._methods.map((method) {
-            final id = (method['id'] ?? '').toString();
-            final bank = asMap(method['bank']);
-            final bankId = (method['bankId'] ?? '').toString();
-            final cardNumber = (method['cardNumber'] ?? '').toString();
-            final subscriptionsCount = asMap(method['_count'])['subscriptions'] ?? 0;
-            final isDefault = method['isDefault'] == true;
-
-            return _PaymentMethodCard(
-              key: ValueKey(id),
-              title: '${bank['name'] ?? 'пїЅпїЅпїЅпїЅ'} пїЅ $cardNumber',
-              subscriptionsCount: subscriptionsCount.toString(),
-              isDefault: isDefault,
-              banks: _banks,
-              bankId: bankId,
-              cardNumber: cardNumber,
-              onSetDefault: isDefault ? null : () => _setDefault(id),
-              onDelete: () => _delete(id),
-              onSave: (newBankId, newCard) => _update(id, newBankId, newCard),
-            );
-          }),
-        ],
+          );
+        },
       ),
     );
   }
@@ -164,42 +314,33 @@ class _SettingsPaymentMethodsScreenState extends ConsumerState<SettingsPaymentMe
 
 class _PaymentMethodCard extends StatefulWidget {
   const _PaymentMethodCard({
-    super.key,
-    required this.title,
-    required this.subscriptionsCount,
-    required this.isDefault,
+    required this.method,
     required this.banks,
-    required this.bankId,
-    required this.cardNumber,
-    required this.onDelete,
     required this.onSave,
+    required this.onDelete,
     this.onSetDefault,
   });
 
-  final String title;
-  final String subscriptionsCount;
-  final bool isDefault;
-  final List<Map<String, dynamic>> banks;
-  final String bankId;
-  final String cardNumber;
-  final VoidCallback? onSetDefault;
-  final VoidCallback onDelete;
+  final SettingsPaymentMethod method;
+  final List<SettingsBank> banks;
   final Future<void> Function(String bankId, String cardNumber) onSave;
+  final Future<void> Function() onDelete;
+  final Future<void> Function()? onSetDefault;
 
   @override
   State<_PaymentMethodCard> createState() => _PaymentMethodCardState();
 }
 
 class _PaymentMethodCardState extends State<_PaymentMethodCard> {
-  late TextEditingController _cardController;
-  late String _bankId;
+  late final TextEditingController _cardController;
+  late String _selectedBankId;
   bool _pending = false;
 
   @override
   void initState() {
     super.initState();
-    _cardController = TextEditingController(text: widget.cardNumber);
-    _bankId = widget.bankId;
+    _cardController = TextEditingController(text: widget.method.cardNumber);
+    _selectedBankId = widget.method.bankId;
   }
 
   @override
@@ -208,66 +349,147 @@ class _PaymentMethodCardState extends State<_PaymentMethodCard> {
     super.dispose();
   }
 
-  Future<void> _save() async {
-    setState(() => _pending = true);
+  Future<void> _run(Future<void> Function() action) async {
+    setState(() {
+      _pending = true;
+    });
     try {
-      await widget.onSave(_bankId, _cardController.text.trim());
+      await action();
     } finally {
       if (mounted) {
-        setState(() => _pending = false);
+        setState(() {
+          _pending = false;
+        });
       }
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    return SectionCard(
+    return SettingsCardBox(
+      margin: const EdgeInsets.symmetric(horizontal: 12),
+      padding: const EdgeInsets.all(10),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
+        children: <Widget>[
           Row(
-            children: [
-              Expanded(child: Text(widget.title, style: Theme.of(context).textTheme.titleMedium)),
-              if (widget.isDefault)
-                const Chip(label: Text('пїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ')),
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: <Widget>[
+              Container(
+                width: 28,
+                height: 28,
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: const Color(0xFFD6E0EC)),
+                ),
+                clipBehavior: Clip.antiAlias,
+                child: widget.method.bankIconLink.isEmpty
+                    ? const Icon(Icons.account_balance_wallet_outlined, size: 18)
+                    : Image.network(
+                        widget.method.bankIconLink,
+                        fit: BoxFit.cover,
+                        errorBuilder: (context, error, stackTrace) =>
+                            const Icon(Icons.account_balance_wallet_outlined, size: 18),
+                      ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  formatPaymentMethodLabel(widget.method.bankName, widget.method.cardNumber),
+                  style: const TextStyle(
+                    color: Color(0xFF10253F),
+                    fontSize: 16,
+                    fontWeight: FontWeight.w700,
+                    height: 1.2,
+                  ),
+                ),
+              ),
+              if (widget.method.isDefault)
+                Container(
+                  height: 24,
+                  padding: const EdgeInsets.symmetric(horizontal: 10),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFDEF8E8),
+                    borderRadius: BorderRadius.circular(999),
+                  ),
+                  alignment: Alignment.center,
+                  child: const Text(
+                    'По умолчанию',
+                    style: TextStyle(
+                      color: Color(0xFF0F7A3F),
+                      fontSize: 11,
+                      fontWeight: FontWeight.w800,
+                      height: 1,
+                    ),
+                  ),
+                ),
             ],
           ),
-          Text('пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ: ${widget.subscriptionsCount}'),
+          const SizedBox(height: 8),
+          Text(
+            'Подписок: ${widget.method.subscriptionsCount}',
+            style: const TextStyle(
+              color: Color(0xFF6B7F99),
+              fontSize: 12,
+              height: 1.2,
+            ),
+          ),
           const SizedBox(height: 8),
           DropdownButtonFormField<String>(
-            initialValue: _bankId,
+            key: ValueKey<String>(_selectedBankId),
+            initialValue: _selectedBankId,
             items: widget.banks
                 .map(
-                  (bank) => DropdownMenuItem(
-                    value: (bank['id'] ?? '').toString(),
-                    child: Text((bank['name'] ?? '').toString()),
+                  (bank) => DropdownMenuItem<String>(
+                    value: bank.id,
+                    child: Text(bank.name),
                   ),
                 )
                 .toList(),
-            onChanged: (value) => setState(() => _bankId = value ?? _bankId),
-            decoration: const InputDecoration(labelText: 'пїЅпїЅпїЅпїЅ'),
+            decoration: settingsInputDecoration(),
+            onChanged: (value) {
+              if (value == null) {
+                return;
+              }
+              setState(() {
+                _selectedBankId = value;
+              });
+            },
           ),
           const SizedBox(height: 8),
           TextField(
             controller: _cardController,
-            decoration: const InputDecoration(labelText: 'пїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅ'),
+            decoration: settingsInputDecoration(),
+          ),
+          const SizedBox(height: 8),
+          SettingsSecondaryButton(
+            text: _pending ? 'Сохранение...' : 'Сохранить',
+            onTap: _pending
+                ? null
+                : () => _run(
+                      () => widget.onSave(_selectedBankId, _cardController.text.trim()),
+                    ),
+            enabled: !_pending,
           ),
           const SizedBox(height: 8),
           Wrap(
             spacing: 8,
-            children: [
-              FilledButton.tonal(
-                onPressed: _pending ? null : _save,
-                child: const Text('пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ'),
-              ),
+            runSpacing: 8,
+            children: <Widget>[
               if (widget.onSetDefault != null)
-                OutlinedButton(
-                  onPressed: _pending ? null : widget.onSetDefault,
-                  child: const Text('пїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ'),
+                SizedBox(
+                  width: 140,
+                  child: SettingsSecondaryButton(
+                    text: _pending ? 'Сохранение...' : 'Сделать основным',
+                    onTap: _pending ? null : () => _run(widget.onSetDefault!),
+                    enabled: !_pending,
+                  ),
                 ),
-              OutlinedButton(
-                onPressed: _pending ? null : widget.onDelete,
-                child: const Text('пїЅпїЅпїЅпїЅпїЅпїЅпїЅ'),
+              SettingsDeleteButton(
+                text: _pending ? 'Удаление...' : 'Удалить',
+                onTap: _pending ? null : () => _run(widget.onDelete),
+                enabled: !_pending,
               ),
             ],
           ),

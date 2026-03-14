@@ -73,16 +73,19 @@ final appRouterProvider = Provider<GoRouter>((ref) {
               path: '/search/all',
               builder: (context, state) => const SearchAllScreen()),
           GoRoute(
+              path: '/subscriptions/new',
+              builder: (context, state) => const NewSubscriptionScreen()),
+          GoRoute(
               path: '/profile',
               builder: (context, state) => const ProfileScreen()),
         ],
       ),
       GoRoute(
-          path: '/subscriptions/new',
-          builder: (context, state) => const NewSubscriptionScreen()),
-      GoRoute(
           path: '/subscriptions/pending',
-          builder: (context, state) => const PendingSubscriptionsScreen()),
+          builder: (context, state) => PendingSubscriptionsScreen(
+                toastType: state.uri.queryParameters['toast'],
+                toastName: state.uri.queryParameters['name'],
+              )),
       GoRoute(
           path: '/notifications',
           builder: (context, state) => const NotificationsScreen()),

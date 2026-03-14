@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter } from "@/lib/navigation/client";
 import { useEffect, useMemo, useState, type FormEvent } from "react";
 
 import { SubscriptionIcon } from "@/app/components/subscription-icon/subscription-icon";
