@@ -58,6 +58,7 @@ Backend (`server/.env`):
 
 - `PORT` (default 4000)
 - `CORS_ORIGIN` (for local frontend use `http://localhost:3000`)
+- `ANDROID_APK_DOWNLOAD_URL` (public direct URL of the current Android APK for landing download CTA)
 - `AUTH_SECRET`
 - `DB_DATABASE_URL` (or `POSTGRES_PRISMA_URL`)
 - `BLOB_READ_WRITE_TOKEN`

@@ -6,6 +6,7 @@ import { banksRouter } from "./banks.router.js";
 import { calendarRouter } from "./calendar.router.js";
 import { catalogRouter } from "./catalog.router.js";
 import { commonSubscriptionsRouter } from "./common-subscriptions.router.js";
+import { downloadsRouter } from "./downloads.router.js";
 import { homeRouter } from "./home.router.js";
 import { notificationsRouter } from "./notifications.router.js";
 import { paymentMethodsRouter } from "./payment-methods.router.js";
@@ -17,6 +18,7 @@ import { userSubscriptionsRouter } from "./user-subscriptions.router.js";
 export const v1Router = Router();
 
 v1Router.use("/auth", authRouter);
+v1Router.use("/downloads", downloadsRouter);
 v1Router.use("/uploads", uploadsRouter);
 v1Router.use("/home", homeRouter);
 v1Router.use("/catalog", catalogRouter);

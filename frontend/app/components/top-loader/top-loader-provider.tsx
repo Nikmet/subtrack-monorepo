@@ -66,6 +66,10 @@ export function TopLoaderProvider() {
         return;
       }
 
+      if (anchor.dataset.topLoader === "ignore") {
+        return;
+      }
+
       const nextUrl = new URL(anchor.href, window.location.href);
       const currentUrl = new URL(window.location.href);
 
@@ -75,8 +79,7 @@ export function TopLoaderProvider() {
 
       if (
         nextUrl.pathname === currentUrl.pathname &&
-        nextUrl.search === currentUrl.search &&
-        nextUrl.hash === currentUrl.hash
+        nextUrl.search === currentUrl.search
       ) {
         return;
       }

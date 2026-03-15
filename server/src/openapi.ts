@@ -306,6 +306,17 @@ registry.registerPath({
     }
 });
 
+registry.registerPath({
+    method: "get",
+    path: "/api/v1/downloads/android",
+    summary: "Redirect to the current Android APK download",
+    tags: ["downloads"],
+    responses: {
+        302: { description: "Redirect to APK file" },
+        503: { description: "Service unavailable", content: errorContent }
+    }
+});
+
 registerProtectedPath({ method: "post", path: "/api/v1/uploads/avatar", summary: "Upload avatar", tags: ["uploads"] });
 registerProtectedPath({ method: "post", path: "/api/v1/uploads/icon", summary: "Upload icon", tags: ["uploads"] });
 
@@ -676,6 +687,7 @@ export function buildOpenApiDocument() {
         tags: [
             { name: "system" },
             { name: "auth" },
+            { name: "downloads" },
             { name: "uploads" },
             { name: "home" },
             { name: "profile" },

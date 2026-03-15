@@ -6,6 +6,7 @@ const envSchema = z.object({
     LOG_LEVEL: z.enum(["debug", "info", "warn", "error"]).default("info"),
     PORT: z.coerce.number().int().positive().default(4000),
     CORS_ORIGIN: z.string().default("http://localhost:3000"),
+    ANDROID_APK_DOWNLOAD_URL: z.string().url().optional(),
     AUTH_SECRET: z.string().min(16),
     ACCESS_TOKEN_TTL_MINUTES: z.coerce.number().int().positive().default(15),
     REFRESH_TOKEN_TTL_DAYS: z.coerce.number().int().positive().default(30),

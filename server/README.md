@@ -45,6 +45,7 @@ Required variables:
 - `AUTH_SECRET`
 - `DB_DATABASE_URL` (or `POSTGRES_PRISMA_URL`)
 - `BLOB_READ_WRITE_TOKEN`
+- `ANDROID_APK_DOWNLOAD_URL` (public direct URL of the current Android APK file)
 
 ## Prisma
 
