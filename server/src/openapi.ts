@@ -80,6 +80,7 @@ const updateUserSubscriptionBodySchema = z.object({
 const createCommonSubscriptionBodySchema = z.object({
     name: z.string().min(2),
     imgLink: z.string().url().or(z.string().min(1)),
+    managementUrl: z.string().url().optional().or(z.literal("")),
     category: z.string().min(1),
     price: z.number().positive(),
     period: z.number().int().positive()
@@ -119,6 +120,7 @@ const rejectBodySchema = z.object({
 const updateAdminSubscriptionBodySchema = z.object({
     name: z.string().min(2),
     imgLink: z.string().optional().default(""),
+    managementUrl: z.string().url().optional().or(z.literal("")),
     category: z.string().min(1),
     price: z.number().positive(),
     period: z.number().int().positive(),
@@ -140,11 +142,70 @@ const homeQuerySchema = z.object({
     currency: z.enum(["rub", "usd", "eur"]).optional()
 });
 
+const adminAnalyticsQuerySchema = z.object({
+    year: z.number().int().min(2000).max(2100).optional()
+});
+
 const authSuccessSchema = z.object({
     data: z.object({
         user: authUserSchema.nullable(),
         tokenPair: authTokenPairSchema.optional()
     }),
+    meta: metaSchema
+});
+
+const homeSubscriptionItemSchema = z.object({
+    id: z.string().uuid(),
+    price: z.number(),
+    monthlyPrice: z.number(),
+    period: z.number().int(),
+    nextPaymentAt: z.string().nullable(),
+    paymentMethodId: z.string().uuid().nullable(),
+    paymentCardLabel: z.string(),
+    typeName: z.string(),
+    typeImage: z.string(),
+    managementUrl: z.string().url().nullable(),
+    categoryName: z.string()
+});
+
+const homeSuccessSchema = z.object({
+    data: z.object({
+        currency: z.enum(["rub", "usd", "eur"]),
+        currencyFallback: z.boolean(),
+        userInitials: z.string(),
+        userAvatarLink: z.string().nullable(),
+        monthlyTotal: z.number(),
+        subscriptionsCount: z.number().int(),
+        subscriptions: z.array(homeSubscriptionItemSchema),
+        categoryStats: z.array(z.object({
+            name: z.string(),
+            amount: z.number(),
+            share: z.number()
+        })),
+        categoryTotal: z.number(),
+        cardStats: z.array(z.object({
+            label: z.string(),
+            amount: z.number(),
+            share: z.number(),
+            subscriptionsCount: z.number().int()
+        })),
+        cardTotal: z.number()
+    }).nullable(),
+    meta: metaSchema
+});
+
+const adminSubscriptionDetailsSuccessSchema = z.object({
+    data: z.object({
+        id: z.string().uuid(),
+        name: z.string(),
+        imgLink: z.string(),
+        managementUrl: z.string().url().nullable(),
+        category: z.string(),
+        price: z.number(),
+        period: z.number().int(),
+        moderationComment: z.string().nullable(),
+        status: z.enum(["PENDING", "PUBLISHED", "REJECTED"])
+    }).nullable(),
     meta: metaSchema
 });
 
@@ -168,6 +229,8 @@ registry.register("UpdateAdminSubscriptionBody", updateAdminSubscriptionBodySche
 registry.register("BanBody", banBodySchema);
 registry.register("CreateBankBody", createBankBodySchema);
 registry.register("UpdateBankBody", updateBankBodySchema);
+registry.register("HomeSuccess", homeSuccessSchema);
+registry.register("AdminSubscriptionDetailsSuccess", adminSubscriptionDetailsSuccessSchema);
 
 const successContent = {
     "application/json": {
@@ -320,12 +383,21 @@ registry.registerPath({
 registerProtectedPath({ method: "post", path: "/api/v1/uploads/avatar", summary: "Upload avatar", tags: ["uploads"] });
 registerProtectedPath({ method: "post", path: "/api/v1/uploads/icon", summary: "Upload icon", tags: ["uploads"] });
 
-registerProtectedPath({
+registry.registerPath({
     method: "get",
     path: "/api/v1/home",
     summary: "Get home screen data",
     tags: ["home"],
-    request: { query: homeQuerySchema }
+    security: authSecurity,
+    request: { query: homeQuerySchema },
+    responses: {
+        200: { description: "OK", content: { "application/json": { schema: homeSuccessSchema } } },
+        400: { description: "Bad Request", content: errorContent },
+        401: { description: "Unauthorized", content: errorContent },
+        403: { description: "Forbidden", content: errorContent },
+        404: { description: "Not Found", content: errorContent },
+        409: { description: "Conflict", content: errorContent }
+    }
 });
 registerProtectedPath({ method: "get", path: "/api/v1/profile", summary: "Get profile page data", tags: ["profile"] });
 registerProtectedPath({
@@ -542,6 +614,15 @@ registerProtectedPath({ method: "get", path: "/api/v1/banks", summary: "List ban
 
 registerProtectedPath({
     method: "get",
+    path: "/api/v1/admin/analytics",
+    summary: "Admin analytics overview",
+    tags: ["admin"],
+    request: {
+        query: adminAnalyticsQuerySchema
+    }
+});
+registerProtectedPath({
+    method: "get",
     path: "/api/v1/admin/moderation/subscriptions",
     summary: "Admin moderation queue",
     tags: ["admin"],
@@ -586,12 +667,21 @@ registerProtectedPath({
         })
     }
 });
-registerProtectedPath({
+registry.registerPath({
     method: "get",
     path: "/api/v1/admin/subscriptions/{id}",
     summary: "Get subscription details",
     tags: ["admin"],
-    request: { params: z.object({ id: z.string().uuid() }) }
+    security: authSecurity,
+    request: { params: z.object({ id: z.string().uuid() }) },
+    responses: {
+        200: { description: "OK", content: { "application/json": { schema: adminSubscriptionDetailsSuccessSchema } } },
+        400: { description: "Bad Request", content: errorContent },
+        401: { description: "Unauthorized", content: errorContent },
+        403: { description: "Forbidden", content: errorContent },
+        404: { description: "Not Found", content: errorContent },
+        409: { description: "Conflict", content: errorContent }
+    }
 });
 registerProtectedPath({
     method: "patch",

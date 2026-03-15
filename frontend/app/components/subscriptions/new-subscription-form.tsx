@@ -67,6 +67,8 @@ export function NewSubscriptionForm() {
 
     const name = typeof formData.get("name") === "string" ? formData.get("name")!.toString().trim() : "";
     const category = typeof formData.get("category") === "string" ? formData.get("category")!.toString() : "other";
+    const managementUrl =
+      typeof formData.get("managementUrl") === "string" ? formData.get("managementUrl")!.toString().trim() : "";
     const price = typeof formData.get("price") === "string" ? Number(formData.get("price")) : 0;
     const period = typeof formData.get("period") === "string" ? Number(formData.get("period")) : 1;
 
@@ -79,6 +81,7 @@ export function NewSubscriptionForm() {
           name,
           category,
           imgLink: iconUrl,
+          managementUrl,
           price,
           period,
         }),
@@ -100,73 +103,141 @@ export function NewSubscriptionForm() {
     <form onSubmit={onSubmit} className={styles.form}>
       <input type="hidden" name="imgLink" value={iconUrl} />
 
-      <div className={styles.iconField}>
-        <label className={styles.iconDrop} htmlFor="iconUpload">
-          {iconUrl ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img src={iconUrl} alt="Иконка подписки" className={styles.iconPreview} />
-          ) : (
-            <span className={styles.iconPlaceholder}>Иконка</span>
-          )}
-        </label>
-        <input
-          id="iconUpload"
-          type="file"
-          accept="image/png,image/jpeg,image/webp,image/svg+xml"
-          className={styles.fileInput}
-          onChange={handleFileChange}
-        />
-        <p className={styles.iconHint}>{isUploading ? "Загрузка..." : "Нажмите, чтобы загрузить иконку"}</p>
-        {uploadError ? <p className={styles.errorText}>{uploadError}</p> : null}
-      </div>
-
-      <div className={styles.fieldGroup}>
-        <label className={styles.label}>Название сервиса</label>
-        <input className={styles.input} type="text" name="name" placeholder="Напр. Netflix" required />
-      </div>
-
-      <div className={styles.rowFields}>
-        <div className={styles.fieldGroup}>
-          <label className={styles.label}>Стоимость</label>
+      <section className={styles.identitySection}>
+        <div className={styles.iconField}>
+          <label className={styles.iconDrop} htmlFor="iconUpload">
+            {iconUrl ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={iconUrl} alt="Иконка подписки" className={styles.iconPreview} />
+            ) : (
+              <span className={styles.iconPlaceholder}>Иконка</span>
+            )}
+          </label>
           <input
+            id="iconUpload"
+            type="file"
+            accept="image/png,image/jpeg,image/webp,image/svg+xml"
+            className={styles.fileInput}
+            onChange={handleFileChange}
+          />
+          <p className={styles.iconHint}>{isUploading ? "Загрузка..." : "Нажмите, чтобы загрузить иконку"}</p>
+          <p className={styles.iconSubtext}>Поддерживаются PNG, JPG, WEBP и SVG до 10MB.</p>
+          {uploadError ? <p className={styles.errorText}>{uploadError}</p> : null}
+        </div>
+
+        <div className={styles.identityContent}>
+          <div className={styles.sectionHeader}>
+            <p className={styles.sectionEyebrow}>Основа карточки</p>
+            <h3 className={styles.sectionTitle}>Как сервис будет выглядеть в каталоге</h3>
+            <p className={styles.sectionText}>
+              Название и категория нужны для поиска, а качественная иконка делает карточку узнаваемой.
+            </p>
+          </div>
+
+          <div className={styles.fieldGrid}>
+            <div className={styles.fieldGroup}>
+              <label className={styles.label} htmlFor="name">
+                Название сервиса
+              </label>
+              <input id="name" className={styles.input} type="text" name="name" placeholder="Напр. Netflix" required />
+            </div>
+
+            <div className={styles.fieldGroup}>
+              <label className={styles.label} htmlFor="category">
+                Категория
+              </label>
+              <select id="category" className={styles.input} name="category" defaultValue="other" required>
+                {SUBSCRIPTION_CATEGORIES.map((category) => (
+                  <option key={category.value} value={category.value}>
+                    {category.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section className={styles.sectionCard}>
+        <div className={styles.sectionHeader}>
+          <p className={styles.sectionEyebrow}>Платежные параметры</p>
+          <h3 className={styles.sectionTitle}>Настройте стоимость и период списания</h3>
+          <p className={styles.sectionText}>
+            Укажите ту цену, которую пользователь реально платит за один цикл подписки.
+          </p>
+        </div>
+
+        <div className={styles.rowFields}>
+          <div className={styles.fieldGroup}>
+            <label className={styles.label} htmlFor="price">
+              Стоимость
+            </label>
+            <div className={styles.inputWrap}>
+              <input
+                id="price"
+                className={styles.input}
+                type="number"
+                step="0.01"
+                min="0.01"
+                name="price"
+                placeholder="0.00"
+                required
+              />
+              <span className={styles.inputSuffix}>₽</span>
+            </div>
+          </div>
+
+          <div className={styles.fieldGroup}>
+            <label className={styles.label} htmlFor="period">
+              Период
+            </label>
+            <select id="period" className={styles.input} name="period" defaultValue="1" required>
+              {periods.map((period) => (
+                <option key={period.value} value={period.value}>
+                  {period.label}
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
+      </section>
+
+      <section className={styles.sectionCard}>
+        <div className={styles.sectionHeader}>
+          <p className={styles.sectionEyebrow}>Опционально</p>
+          <h3 className={styles.sectionTitle}>Ссылка на управление подпиской</h3>
+          <p className={styles.sectionText}>
+            Если у сервиса есть личный кабинет или страница управления, добавьте ссылку. Она появится на
+            карточке подписки у пользователя.
+          </p>
+        </div>
+
+        <div className={styles.fieldGroup}>
+          <label className={styles.label} htmlFor="managementUrl">
+            Ссылка на управление
+          </label>
+          <input
+            id="managementUrl"
             className={styles.input}
-            type="number"
-            step="0.01"
-            min="0.01"
-            name="price"
-            placeholder="0.00"
-            required
+            type="url"
+            name="managementUrl"
+            placeholder="https://..."
           />
         </div>
-
-        <div className={styles.fieldGroup}>
-          <label className={styles.label}>Период</label>
-          <select className={styles.input} name="period" defaultValue="1" required>
-            {periods.map((period) => (
-              <option key={period.value} value={period.value}>
-                {period.label}
-              </option>
-            ))}
-          </select>
-        </div>
-      </div>
-
-      <div className={styles.fieldGroup}>
-        <label className={styles.label}>Категория</label>
-        <select className={styles.input} name="category" defaultValue="other" required>
-          {SUBSCRIPTION_CATEGORIES.map((category) => (
-            <option key={category.value} value={category.value}>
-              {category.label}
-            </option>
-          ))}
-        </select>
-      </div>
+      </section>
 
       {error ? <p className={styles.errorText}>{error}</p> : null}
 
-      <button className={styles.submitButton} type="submit" disabled={isPending || isUploading}>
-        {isPending ? "Отправка..." : "Создать подписку"}
-      </button>
+      <div className={styles.submitRow}>
+        <p className={styles.submitHint}>
+          После отправки заявка попадет на модерацию. Как только она будет опубликована, сервис появится в
+          общем каталоге.
+        </p>
+
+        <button className={styles.submitButton} type="submit" disabled={isPending || isUploading}>
+          {isPending ? "Отправка..." : "Создать подписку"}
+        </button>
+      </div>
     </form>
   );
 }

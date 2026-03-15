@@ -164,6 +164,7 @@ homeRouter.get(
         paymentCardLabel: item.paymentCardLabel,
         typeName: item.commonSubscription.name,
         typeImage: item.commonSubscription.imgLink ?? "",
+        managementUrl: item.commonSubscription.managementUrl ?? null,
         categoryName: getSubscriptionCategoryLabel(item.commonSubscription.category),
       };
     });

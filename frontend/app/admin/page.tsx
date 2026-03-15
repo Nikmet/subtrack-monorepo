@@ -8,6 +8,11 @@ export const dynamic = "force-dynamic";
 
 const adminAreas = [
   {
+    href: "/admin/analytics",
+    title: "Аналитика",
+    description: "Регистрации, созданные подписки и годовая сумма активных подписок.",
+  },
+  {
     href: "/admin/moderation",
     title: "Очередь модерации",
     description: "Проверка новых подписок, публикация и отклонение.",

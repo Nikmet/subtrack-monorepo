@@ -1,0 +1,12 @@
+BEGIN;
+
+ALTER TABLE "User"
+  ADD COLUMN IF NOT EXISTS "createdAt" TIMESTAMP(3);
+
+ALTER TABLE "User"
+  ALTER COLUMN "createdAt" SET DEFAULT CURRENT_TIMESTAMP;
+
+CREATE INDEX IF NOT EXISTS "User_role_createdAt_idx"
+  ON "User"("role", "createdAt");
+
+COMMIT;

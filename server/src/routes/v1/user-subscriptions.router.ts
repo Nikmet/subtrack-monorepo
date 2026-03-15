@@ -16,6 +16,15 @@ import { asyncHandler } from "../../utils/async-handler.js";
 
 const NEW_PAYMENT_METHOD_VALUE = "__new__";
 
+const optionalManagementUrlSchema = z
+  .string()
+  .trim()
+  .optional()
+  .default("")
+  .refine((value) => value === "" || z.string().url().safeParse(value).success, {
+    message: "Некорректная ссылка на страницу управления.",
+  });
+
 const createUserSubscriptionBodySchema = z.object({
   commonSubscriptionId: z.string().uuid(),
   nextPaymentAt: z.string().min(1),
@@ -35,6 +44,7 @@ const createCommonSubscriptionBodySchema = z.object({
   name: z.string().trim().min(2),
   category: z.string().optional().default(DEFAULT_SUBSCRIPTION_CATEGORY),
   imgLink: z.string().optional().default(""),
+  managementUrl: optionalManagementUrlSchema,
   price: z.coerce.number().positive(),
   period: z.coerce.number().int(),
 });
@@ -459,6 +469,7 @@ userSubscriptionsRouter.post(
       data: {
         name: body.name.trim(),
         imgLink: body.imgLink.trim(),
+        managementUrl: body.managementUrl.trim() || null,
         category,
         price: body.price,
         period: body.period,

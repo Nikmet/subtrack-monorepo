@@ -15,6 +15,7 @@ type EditSubscriptionFormProps = {
     id: string;
     name: string;
     imgLink: string;
+    managementUrl: string | null;
     category: (typeof SUBSCRIPTION_CATEGORIES)[number]["value"];
     price: number;
     period: number;
@@ -26,6 +27,7 @@ export function EditSubscriptionForm({ item }: EditSubscriptionFormProps) {
   const router = useRouter();
   const [name, setName] = useState(item.name);
   const [iconUrl, setIconUrl] = useState(item.imgLink);
+  const [managementUrl, setManagementUrl] = useState(item.managementUrl ?? "");
   const [category, setCategory] = useState(item.category);
   const [price, setPrice] = useState(String(item.price));
   const [period, setPeriod] = useState(String(item.period));
@@ -84,6 +86,7 @@ export function EditSubscriptionForm({ item }: EditSubscriptionFormProps) {
         body: JSON.stringify({
           name: name.trim(),
           imgLink: iconUrl.trim(),
+          managementUrl: managementUrl.trim(),
           category,
           price: Number(price),
           period: Number(period),
@@ -143,6 +146,19 @@ export function EditSubscriptionForm({ item }: EditSubscriptionFormProps) {
         value={iconUrl}
         onChange={(event) => setIconUrl(event.target.value)}
         required
+      />
+
+      <label className={styles.label} htmlFor="managementUrl">
+        Ссылка на управление
+      </label>
+      <input
+        className={styles.input}
+        id="managementUrl"
+        name="managementUrl"
+        type="url"
+        value={managementUrl}
+        onChange={(event) => setManagementUrl(event.target.value)}
+        placeholder="https://..."
       />
 
       <label className={styles.label} htmlFor="category">

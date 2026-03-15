@@ -269,6 +269,22 @@ export function SubscriptionListItem({
             <span className={styles.statusText}>{statusLabel}</span>
           </div>
         </div>
+
+        {item.managementUrl ? (
+          <>
+            <div className={styles.cardDivider} />
+            <div className={styles.cardActions}>
+              <a
+                href={item.managementUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className={styles.manageLink}
+              >
+                Открыть кабинет
+              </a>
+            </div>
+          </>
+        ) : null}
       </article>
       {menu}
     </>

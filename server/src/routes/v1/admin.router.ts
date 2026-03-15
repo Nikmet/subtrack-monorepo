@@ -1,3 +1,4 @@
+import { Prisma } from "@prisma/client";
 import { Router } from "express";
 import { z } from "zod";
 
@@ -10,6 +11,15 @@ import { getSubscriptionCategoryLabel, isSubscriptionCategory } from "../../lib/
 import { asyncHandler } from "../../utils/async-handler.js";
 
 const allowedPeriods = new Set([1, 3, 6, 12]);
+
+const optionalManagementUrlSchema = z
+  .string()
+  .trim()
+  .optional()
+  .default("")
+  .refine((value) => value === "" || z.string().url().safeParse(value).success, {
+    message: "Некорректная ссылка на страницу управления.",
+  });
 
 const moderationQuerySchema = z.object({
   q: z.string().optional().default(""),
@@ -29,6 +39,10 @@ const usersQuerySchema = z.object({
   ban: z.enum(["banned", "active", ""]).optional().default(""),
 });
 
+const analyticsQuerySchema = z.object({
+  year: z.coerce.number().int().min(2000).max(2100).optional(),
+});
+
 const idParamsSchema = z.object({
   id: z.string().uuid(),
 });
@@ -44,6 +58,7 @@ const rejectBodySchema = z.object({
 const updateSubscriptionBodySchema = z.object({
   name: z.string().trim().min(2),
   imgLink: z.string().optional().default(""),
+  managementUrl: optionalManagementUrlSchema,
   category: z.string().min(1),
   price: z.coerce.number().positive(),
   period: z.coerce.number().int(),
@@ -84,6 +99,119 @@ const createNotificationForUsers = async (
 export const adminRouter = Router();
 
 adminRouter.use(authRequired, notBanned, adminRequired);
+
+adminRouter.get(
+  "/analytics",
+  validateQuery(analyticsQuerySchema),
+  asyncHandler(async (req, res) => {
+    const query = req.query as unknown as z.infer<typeof analyticsQuerySchema>;
+    const selectedYear = query.year ?? new Date().getUTCFullYear();
+    const rangeStart = new Date(Date.UTC(selectedYear, 0, 1));
+    const rangeEnd = new Date(Date.UTC(selectedYear + 1, 0, 1));
+
+    type MonthlyCountRow = {
+      month: number;
+      count: number;
+    };
+
+    type AvailableYearRow = {
+      year: number;
+    };
+
+    type AnnualTotalRow = {
+      total: number | null;
+    };
+
+    const [
+      registrationRows,
+      userSubscriptionRows,
+      commonSubscriptionRows,
+      annualTotalRows,
+      availableYearRows,
+    ] = await Promise.all([
+      prisma.$queryRaw<MonthlyCountRow[]>(Prisma.sql`
+        SELECT
+          EXTRACT(MONTH FROM "createdAt")::int AS "month",
+          COUNT(*)::int AS "count"
+        FROM "User"
+        WHERE "role" = 'USER'
+          AND "createdAt" >= ${rangeStart}
+          AND "createdAt" < ${rangeEnd}
+        GROUP BY 1
+        ORDER BY 1
+      `),
+      prisma.$queryRaw<MonthlyCountRow[]>(Prisma.sql`
+        SELECT
+          EXTRACT(MONTH FROM "createdAt")::int AS "month",
+          COUNT(*)::int AS "count"
+        FROM "UserSubscription"
+        WHERE "createdAt" >= ${rangeStart}
+          AND "createdAt" < ${rangeEnd}
+        GROUP BY 1
+        ORDER BY 1
+      `),
+      prisma.$queryRaw<MonthlyCountRow[]>(Prisma.sql`
+        SELECT
+          EXTRACT(MONTH FROM "createdAt")::int AS "month",
+          COUNT(*)::int AS "count"
+        FROM "CommonSubscription"
+        WHERE "createdAt" >= ${rangeStart}
+          AND "createdAt" < ${rangeEnd}
+        GROUP BY 1
+        ORDER BY 1
+      `),
+      prisma.$queryRaw<AnnualTotalRow[]>(Prisma.sql`
+        SELECT
+          COALESCE(SUM(("CommonSubscription"."price" * 12.0) / GREATEST("CommonSubscription"."period", 1)), 0)::float8 AS "total"
+        FROM "UserSubscription"
+        INNER JOIN "CommonSubscription"
+          ON "CommonSubscription"."id" = "UserSubscription"."commonSubscriptionId"
+      `),
+      prisma.$queryRaw<AvailableYearRow[]>(Prisma.sql`
+        SELECT DISTINCT "year"
+        FROM (
+          SELECT EXTRACT(YEAR FROM "createdAt")::int AS "year" FROM "User" WHERE "role" = 'USER'
+          UNION
+          SELECT EXTRACT(YEAR FROM "createdAt")::int AS "year" FROM "UserSubscription"
+          UNION
+          SELECT EXTRACT(YEAR FROM "createdAt")::int AS "year" FROM "CommonSubscription"
+        ) AS "years"
+        WHERE "year" IS NOT NULL
+        ORDER BY "year" DESC
+      `),
+    ]);
+
+    const monthFormatter = new Intl.DateTimeFormat("ru-RU", { month: "short", timeZone: "UTC" });
+
+    const registrationsByMonth = new Map(registrationRows.map((row) => [row.month, row.count]));
+    const userSubscriptionsByMonth = new Map(userSubscriptionRows.map((row) => [row.month, row.count]));
+    const commonSubscriptionsByMonth = new Map(commonSubscriptionRows.map((row) => [row.month, row.count]));
+
+    const months = Array.from({ length: 12 }, (_, index) => ({
+      month: index + 1,
+      label: monthFormatter.format(new Date(Date.UTC(selectedYear, index, 1))),
+      registrationsCount: registrationsByMonth.get(index + 1) ?? 0,
+      userSubscriptionsCreatedCount: userSubscriptionsByMonth.get(index + 1) ?? 0,
+      commonSubscriptionsCreatedCount: commonSubscriptionsByMonth.get(index + 1) ?? 0,
+    }));
+
+    const availableYears = [...new Set([selectedYear, new Date().getUTCFullYear(), ...availableYearRows.map((row) => row.year)])].sort(
+      (a, b) => b - a,
+    );
+
+    sendSuccess(res, {
+      selectedYear,
+      availableYears,
+      summary: {
+        registrationsTotal: months.reduce((sum, item) => sum + item.registrationsCount, 0),
+        userSubscriptionsCreatedTotal: months.reduce((sum, item) => sum + item.userSubscriptionsCreatedCount, 0),
+        commonSubscriptionsCreatedTotal: months.reduce((sum, item) => sum + item.commonSubscriptionsCreatedCount, 0),
+        activeSubscriptionsAnnualTotalRub: annualTotalRows[0]?.total ?? 0,
+      },
+      months,
+    });
+  }),
+);
 
 adminRouter.get(
   "/moderation/subscriptions",
@@ -308,6 +436,7 @@ adminRouter.get(
         id: true,
         name: true,
         imgLink: true,
+        managementUrl: true,
         category: true,
         price: true,
         period: true,
@@ -357,6 +486,7 @@ adminRouter.patch(
       data: {
         name: body.name,
         imgLink: body.imgLink.trim(),
+        managementUrl: body.managementUrl.trim() || null,
         category: body.category,
         price: body.price,
         period: body.period,

@@ -9,10 +9,20 @@ import { prisma } from "../../lib/prisma.js";
 import { DEFAULT_SUBSCRIPTION_CATEGORY, isSubscriptionCategory } from "../../lib/subscription-constants.js";
 import { asyncHandler } from "../../utils/async-handler.js";
 
+const optionalManagementUrlSchema = z
+  .string()
+  .trim()
+  .optional()
+  .default("")
+  .refine((value) => value === "" || z.string().url().safeParse(value).success, {
+    message: "Некорректная ссылка на страницу управления.",
+  });
+
 const createCommonSubscriptionBodySchema = z.object({
   name: z.string().trim().min(2),
   category: z.string().optional().default(DEFAULT_SUBSCRIPTION_CATEGORY),
   imgLink: z.string().optional().default(""),
+  managementUrl: optionalManagementUrlSchema,
   price: z.coerce.number().positive(),
   period: z.coerce.number().int(),
 });
@@ -46,6 +56,7 @@ commonSubscriptionsRouter.post(
       data: {
         name: body.name.trim(),
         imgLink: body.imgLink.trim(),
+        managementUrl: body.managementUrl.trim() || null,
         category,
         price: body.price,
         period: body.period,

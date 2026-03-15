@@ -22,12 +22,15 @@ model User {
     isBanned                   Boolean              @default(false)
     banReason                  String?
     bannedAt                   DateTime?
+    createdAt                  DateTime?            @default(now())
     subscriptions              UserSubscription[]
     paymentMethods             PaymentMethod[]
     notifications              Notification[]
     refreshTokens              RefreshToken[]
     createdCommonSubscriptions CommonSubscription[] @relation("CommonSubscriptionCreatedBy")
     moderatedCommonSubs        CommonSubscription[] @relation("CommonSubscriptionModeratedBy")
+
+    @@index([role, createdAt])
 }
 
 model Bank {
@@ -43,6 +46,7 @@ model CommonSubscription {
     id                 String                   @id @default(uuid()) @db.Uuid
     name               String
     imgLink            String
+    managementUrl      String?
     category           SubscriptionCategory
     price              Decimal                  @db.Decimal(10, 2)
     period             Int                      @db.SmallInt

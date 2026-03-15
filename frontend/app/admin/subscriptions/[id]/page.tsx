@@ -19,6 +19,7 @@ type SubscriptionItem = {
   id: string;
   name: string;
   imgLink: string;
+  managementUrl: string | null;
   category: "streaming" | "music" | "games" | "shopping" | "ai" | "finance" | "other";
   price: number;
   period: number;
@@ -51,6 +52,7 @@ export default async function AdminEditSubscriptionPage({ params }: AdminEditSub
             id: item.id,
             name: item.name,
             imgLink: item.imgLink,
+            managementUrl: item.managementUrl,
             category: item.category,
             price: item.price,
             period: item.period,

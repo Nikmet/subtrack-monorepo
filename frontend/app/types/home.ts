@@ -10,6 +10,7 @@ export type SubscriptionListItem = {
     paymentCardLabel: string;
     typeName: string;
     typeImage: string;
+    managementUrl: string | null;
     categoryName: string;
 };
 
